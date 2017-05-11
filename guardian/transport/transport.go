@@ -2,8 +2,6 @@
 package transport
 
 import (
-	"time"
-
 	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/lease"
 )
@@ -25,7 +23,6 @@ type AcquireResponse struct {
 	Request
 	Accepted bool          `json:"accepted"`
 	Message  string        `json:"message,omitempty"`
-	Duration time.Duration `json:"duration"` // FIXME: JSON duration codec
 	Leases   []lease.Lease `json:"lease"`
 }
 
