@@ -31,12 +31,13 @@ type Client struct {
 // NewClient creates a new guardian client that will resolve services for the
 // given service name.
 //
-// TODO: Query the health of multiple servers in parallel, probably with a
-//       50ms delay between each, in order to proactively locate a functional
-//       endpoint.
+// TODO:
+// Query the health of multiple servers in parallel, probably with a
+// 50ms delay between each, in order to proactively locate a functional
+// endpoint.
 //
-// TODO: Break service resolution out into its own thing that plugs into a
-//       client.
+// TODO:
+// Break service resolution out into its own thing that plugs into a client.
 func NewClient(service string) (*Client, error) {
 	ctx := context.TODO()
 
