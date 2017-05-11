@@ -64,6 +64,6 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 // environment.
 //
 // All of the policy's conditions must match for the policy to be applied.
-func (pol *Policy) Match(resource, consumer string, env environment.Environment) bool {
-	return pol.Criteria.Match(resource, consumer, env)
+func (p *Policy) Match(resource, consumer string, env environment.Environment) bool {
+	return p.Criteria.Match(resource, consumer, env)
 }
