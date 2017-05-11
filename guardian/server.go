@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian/transport"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/policy"
@@ -95,6 +96,8 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 			return
 		}
 
+		prefix := fmt.Sprintf("%s - %s", req.Resource, req.Consumer)
+
 		log.Printf("%s - %s: Lease acquisition requested\n", req.Resource, req.Consumer)
 
 		policies, err := cfg.PolicyProvider.Policies()
@@ -107,32 +110,41 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 		limit := applicable.Limit()
 		duration := applicable.Duration()
 
-		l, err := cfg.LeaseProvider.Acquire(req.Resource, req.Consumer, req.Environment, limit, duration)
+		l, allocation, accepted, err := cfg.LeaseProvider.Acquire(req.Resource, req.Consumer, req.Environment, limit, duration)
+		suffix := fmt.Sprintf("pol: %d, alloc: %d/%d, d: %v", len(applicable), allocation, limit, duration)
 		if err != nil {
-			log.Printf("%s - %s: Lease acquisition failed: %v. Policies: %d Limit: %d, Duration: %v\n", req.Resource, req.Consumer, err, len(applicable), limit, duration)
+			log.Printf("%s: Lease acquisition failed: %v (%s)\n", prefix, err, suffix)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("%s - %s: Lease acquisition succeeded. Policies: %d Limit: %d, Duration: %v\n", req.Resource, req.Consumer, len(applicable), limit, duration)
+		if accepted {
+			log.Printf("%s: Lease acquisition accepted (%s)\n", prefix, suffix)
+		} else {
+			log.Printf("%s: Lease acquisition rejected (%s)\n", prefix, suffix)
+		}
 
 		leases, err := cfg.LeaseProvider.Leases(req.Resource)
 		if err != nil {
 			// Log the error but return a lease set with our lease, which is the only
 			// one that we know of.
-			log.Printf("%s - %s: Lease enumeration failed: %v\n", req.Resource, req.Consumer, err)
+			log.Printf("%s: Lease enumeration failed: %v (%s)\n", prefix, err, suffix)
 			leases = lease.Set{l}
 		}
 
 		response := transport.AcquireResponse{
 			Request:  req,
-			Accepted: true,
+			Accepted: accepted,
 			Leases:   leases,
+		}
+
+		if !accepted {
+			response.Message = fmt.Sprintf("Resource limit of %d has already been met", limit)
 		}
 
 		data, err := json.Marshal(response)
 		if err != nil {
-			log.Printf("%s - %s: Failed to marshal response: %v\n", req.Resource, req.Consumer, err)
+			log.Printf("%s: Failed to marshal response: %v (%s)\n", prefix, err, suffix)
 			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
 			return
 		}
@@ -157,6 +169,9 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 		case "consumer":
 			req.Consumer = value
 		default:
+			if req.Environment == nil {
+				req.Environment = make(environment.Environment)
+			}
 			req.Environment[k] = value
 		}
 	}

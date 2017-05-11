@@ -2,7 +2,6 @@ package memprov
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -26,13 +25,16 @@ func New() *Provider {
 //
 // If the provided resource is empty all leases will be returned.
 func (p *Provider) Leases(resource string) (leases lease.Set, err error) {
-	err = errors.New("Lease listing has not been written yet")
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	leases = make(lease.Set, len(p.leases))
+	copy(leases, p.leases)
 	return
 }
 
 // Acquire will attempt to create or renew a lease for the given resource and
 // consumer.
-func (p *Provider) Acquire(resource, consumer string, env environment.Environment, limit uint, duration time.Duration) (result lease.Lease, err error) {
+func (p *Provider) Acquire(resource, consumer string, env environment.Environment, limit uint, duration time.Duration) (result lease.Lease, allocation uint, accepted bool, err error) {
 	now := time.Now()
 
 	p.mutex.Lock()
@@ -40,29 +42,43 @@ func (p *Provider) Acquire(resource, consumer string, env environment.Environmen
 
 	p.cull()
 
-	allocation := p.allocations[resource]
-	if allocation >= limit {
-		err = fmt.Errorf("resource limit of %d has already been met", limit)
-		return
-	}
-
+	// Check to see whether this is a renewal or an existing allocation
 	index := -1
 	if len(p.leases) > 0 {
 		index = p.leases.Index(resource, consumer)
 	}
 
+	// If this is a new allocation, check whether we've already exceeded the limit
+	allocation = p.allocations[resource]
+	if index == -1 && allocation >= limit {
+		return
+	}
+
+	// Allocate a map if this is the first lease
+	if p.allocations == nil {
+		p.allocations = make(map[string]uint)
+	}
+
+	// Record the lease
 	result.Resource = resource
 	result.Consumer = consumer
 	result.Environment = env
-	result.Started = now
 	result.Renewed = now
 	result.Duration = duration
 
 	if index == -1 {
+		// This is a new lease
+		result.Started = now
+		allocation++
 		p.leases = append(p.leases, result)
 	} else {
+		// This is a renewal
+		result.Started = p.leases[index].Started
 		p.leases[index] = result
 	}
+
+	p.allocations[resource] = allocation
+	accepted = true
 
 	return
 }
@@ -71,12 +87,44 @@ func (p *Provider) Acquire(resource, consumer string, env environment.Environmen
 // renew the lease.
 func (p *Provider) Update(resource, consumer string, env environment.Environment) (result lease.Lease, err error) {
 	err = errors.New("Lease updating has not been written yet")
+
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.cull()
+
+	index := p.leases.Index(resource, consumer)
+	if index == -1 {
+		// TODO: Return error?
+		return
+	}
+
+	p.leases[index].Environment = env
+
 	return
 }
 
 // Release will remove the lease for the given resource and consumer.
 func (p *Provider) Release(resource, consumer string) (err error) {
-	err = errors.New("Lease releasing has not been written yet")
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.cull()
+
+	// Look for the lease, which might not exist after the cull
+	index := -1
+	if len(p.leases) > 0 {
+		index = p.leases.Index(resource, consumer)
+	}
+
+	// Exit if there's no lease to remove
+	if index == -1 {
+		return
+	}
+
+	// Remove the lease
+	p.remove(index)
+
 	return
 }
 
@@ -84,4 +132,26 @@ func (p *Provider) Release(resource, consumer string) (err error) {
 // expected to hold a write lock for the duration of the call.
 func (p *Provider) cull() {
 
+}
+
+// remove will remove the lease at the given index. If the index is invalid
+// remove will panic.
+//
+// The caller is expected to hold a write lock for the duration of the call.
+func (p *Provider) remove(index int) {
+	// Determine the resource
+	resource := p.leases[index].Resource
+
+	// Perform some sanity checks
+	if p.allocations == nil {
+		panic("allocation map is nil when it shouldn't be")
+	}
+	allocation := p.allocations[resource]
+	if allocation <= 0 {
+		panic("allocation dropped below zero")
+	}
+
+	// Remove the lease
+	p.leases = append(p.leases[:index], p.leases[index+1:]...)
+	p.allocations[resource] = allocation - 1
 }
