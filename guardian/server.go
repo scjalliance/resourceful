@@ -51,6 +51,7 @@ func Run(ctx context.Context, cfg ServerConfig) (err error) {
 	//mux.Handle("/", indexHandler(m))
 	mux.Handle("/health", healthHandler(cfg))
 	mux.Handle("/acquire", acquireHandler(cfg))
+	mux.Handle("/release", releaseHandler(cfg))
 	//mux.Handle("/js/", http.FileServer(cfg.Assets))
 
 	result := make(chan error)
@@ -98,11 +99,11 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 
 		prefix := fmt.Sprintf("%s - %s", req.Resource, req.Consumer)
 
-		log.Printf("%s - %s: Lease acquisition requested\n", req.Resource, req.Consumer)
+		log.Printf("%s: Lease acquisition requested\n", prefix)
 
 		policies, err := cfg.PolicyProvider.Policies()
 		if err != nil {
-			log.Printf("%s - %s: Failed to retrieve policies: %v\n", req.Resource, req.Consumer, err)
+			log.Printf("%s: Failed to retrieve policies: %v\n", prefix, err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 
@@ -145,6 +146,46 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 		data, err := json.Marshal(response)
 		if err != nil {
 			log.Printf("%s: Failed to marshal response: %v (%s)\n", prefix, err, suffix)
+			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
+			return
+		}
+
+		fmt.Fprintf(w, string(data))
+	})
+}
+
+// releaseHandler will attempt to remove the lease for the given resource and
+// consumer.
+func releaseHandler(cfg ServerConfig) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req, err := parseRequest(r)
+		if err != nil {
+			log.Printf("Bad request: %v\n", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		prefix := fmt.Sprintf("%s - %s", req.Resource, req.Consumer)
+
+		log.Printf("%s: Lease removal requested\n", prefix)
+
+		err = cfg.LeaseProvider.Release(req.Resource, req.Consumer)
+		if err != nil {
+			log.Printf("%s: Lease removal failed: %v\n", prefix, err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("%s: Lease removal succeeded\n", prefix)
+
+		response := transport.ReleaseResponse{
+			Request: req,
+			Success: true,
+		}
+
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("%s: Failed to marshal response: %v\n", prefix, err)
 			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
 			return
 		}

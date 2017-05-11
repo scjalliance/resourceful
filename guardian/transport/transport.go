@@ -26,6 +26,13 @@ type AcquireResponse struct {
 	Leases   lease.Set `json:"lease"`
 }
 
+// ReleaseResponse reports the result of a resource release attempt.
+type ReleaseResponse struct {
+	Request
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
 // UpdateResponse represents a lease environment update request.
 type UpdateResponse struct {
 	Request

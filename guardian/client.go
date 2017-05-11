@@ -59,10 +59,12 @@ func NewClient(service string) (*Client, error) {
 // Acquire will attempt to acquire a lease for the given resource and consumer.
 func (c *Client) Acquire(resource, consumer string, env environment.Environment) (response transport.AcquireResponse, err error) {
 	err = c.query("acquire", resource, consumer, env, &response)
-	if err != nil {
-		return
-	}
+	return
+}
 
+// Release will attempt to remove the lease for the given resource and consumer.
+func (c *Client) Release(resource, consumer string) (response transport.ReleaseResponse, err error) {
+	err = c.query("release", resource, consumer, nil, &response)
 	return
 }
 
