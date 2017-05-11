@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
@@ -24,6 +25,39 @@ func New(limit uint, duration time.Duration, criteria Criteria) Policy {
 		Limit:    limit,
 		Duration: duration,
 	}
+}
+
+// MarshalJSON will encode the policy as JSON.
+func (p *Policy) MarshalJSON() ([]byte, error) {
+	type jsonPolicy Policy
+	return json.Marshal(&struct {
+		*jsonPolicy
+		Duration string `json:"duration"`
+	}{
+		jsonPolicy: (*jsonPolicy)(p),
+		Duration:   p.Duration.String(),
+	})
+}
+
+// UnmarshalJSON will decode JSON policy data.
+func (p *Policy) UnmarshalJSON(data []byte) error {
+	type jsonPolicy Policy
+	aux := &struct {
+		*jsonPolicy
+		Duration string `json:"duration"`
+	}{
+		jsonPolicy: (*jsonPolicy)(p),
+	}
+	var err error
+	if err = json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if aux.Duration != "" {
+		if p.Duration, err = time.ParseDuration(aux.Duration); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Match returns true if the policy applies to the given resource, consumer and

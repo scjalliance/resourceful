@@ -13,7 +13,7 @@ type Lease struct {
 	Environment environment.Environment `json:"environment"` // Map of additional properties of the lease
 	Started     time.Time               `json:"started"`
 	Renewed     time.Time               `json:"renewed"`
-	Duration    time.Duration           `json:"duration"` // FIXME: JSON duration codec
+	Duration    time.Duration           `json:"duration"`
 }
 
 // Match returns true if the lease is for the given resource and consumer.
