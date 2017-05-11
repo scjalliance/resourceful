@@ -2,6 +2,7 @@ package fsprov
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 
@@ -26,41 +27,40 @@ func New(path string) *Provider {
 
 // Policies will return a complete set of resource policies.
 func (p *Provider) Policies() (policies policy.Set, err error) {
-	files, err := ioutil.ReadDir(p.path)
-	if err != nil {
-		return
+	files, dirErr := ioutil.ReadDir(p.path)
+	if dirErr != nil {
+		return nil, fmt.Errorf("unable to access policy directory \"%s\": %v", p.path, dirErr)
 	}
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
+
 		matched, matchErr := filepath.Match("*.pol", file.Name())
 		if matchErr != nil {
-			err = matchErr
-			return
+			return nil, fmt.Errorf("unable to perform policy filename match for file \"%s\": %v", file.Name(), matchErr)
 		}
 		if !matched {
 			continue
 		}
+
 		contents, fileErr := ioutil.ReadFile(file.Name())
 		if fileErr != nil {
-			// TODO: Log the error? Return the error?
-			continue
+			return nil, fmt.Errorf("unable to read policy file \"%s\": %v", file.Name(), fileErr)
 		}
+
+		// TODO: Use json.Decoder and stream the file into it instead of slurping?
 		pol := policy.Policy{}
-		// TODO: Use json.Decoder and stream the file into it instead of slurping.
 		dataErr := json.Unmarshal(contents, &pol)
 		if dataErr != nil {
-			// TODO: Log the error? Return the error?
-			//log.Printf("Policy decoding error while reading %s: %v\n", file.Name(), dataErr)
-			continue
+			err = fmt.Errorf("decoding error while parsing policy file \"%s\": %v", file.Name(), dataErr)
+			return
 		}
 
 		if pol.Duration == 0 {
 			pol.Duration = policy.DefaultDuration
 		}
 
-		//log.Printf("Policy loaded from %s: %+v\n", file.Name(), pol)
 		policies = append(policies, pol)
 	}
 
