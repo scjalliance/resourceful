@@ -17,7 +17,7 @@ type Policy struct {
 	// FIXME: JSON duration codec
 }
 
-// New returns a new policy with the given limit, duration and conditions.
+// New returns a new policy with the given limit, duration and criteria.
 func New(limit uint, duration time.Duration, criteria Criteria) Policy {
 	return Policy{
 		Criteria: criteria,
