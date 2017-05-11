@@ -24,8 +24,7 @@ func (c Criteria) Match(resource, consumer string, env environment.Environment) 
 	return true
 }
 
-// Criterion describes a single condition required for a policy to match. The
-// comparison will be case sensitive if CaseSensitive is true.
+// Criterion describes a single condition required for a policy to match.
 type Criterion struct {
 	Component  string `json:"component"`  // The operand of the comparison
 	Key        string `json:"key"`        // The key when operating on an environmental component
