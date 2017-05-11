@@ -21,9 +21,9 @@ type Request struct {
 // AcquireResponse reports the result of a resource acquisition attempt.
 type AcquireResponse struct {
 	Request
-	Accepted bool          `json:"accepted"`
-	Message  string        `json:"message,omitempty"`
-	Leases   []lease.Lease `json:"lease"`
+	Accepted bool      `json:"accepted"`
+	Message  string    `json:"message,omitempty"`
+	Leases   lease.Set `json:"lease"`
 }
 
 // UpdateResponse represents a lease environment update request.
