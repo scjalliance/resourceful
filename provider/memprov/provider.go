@@ -25,8 +25,9 @@ func New() *Provider {
 //
 // If the provided resource is empty all leases will be returned.
 func (p *Provider) Leases(resource string) (leases lease.Set, err error) {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.cull()
 	leases = make(lease.Set, len(p.leases))
 	copy(leases, p.leases)
 	return
@@ -131,7 +132,13 @@ func (p *Provider) Release(resource, consumer string) (err error) {
 // cull will remove all expired leases from the provider. The caller is
 // expected to hold a write lock for the duration of the call.
 func (p *Provider) cull() {
-
+	for i := 0; i < len(p.leases); {
+		if p.leases[i].Expired() {
+			p.remove(i)
+		} else {
+			i++
+		}
+	}
 }
 
 // remove will remove the lease at the given index. If the index is invalid
