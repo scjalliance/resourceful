@@ -23,3 +23,18 @@ func (s Set) Index(resource, consumer string) (index int) {
 	}
 	return -1
 }
+
+// Environment returns a slice of environment values from the leases. Keys are
+// are supplied in preferential order, and the first key in each lease that
+// exists is returned as the value for that key.
+func (s Set) Environment(keys ...string) (values []string) {
+	for _, l := range s {
+		for _, key := range keys {
+			if value, ok := l.Environment[key]; ok {
+				values = append(values, value)
+				break
+			}
+		}
+	}
+	return
+}
