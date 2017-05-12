@@ -48,7 +48,6 @@ func NewClient(service string) (*Client, error) {
 	if len(services) == 0 {
 		return nil, errors.New("Unable to detect host domain")
 	}
-	log.Print(services)
 
 	return &Client{
 		service:  service,
