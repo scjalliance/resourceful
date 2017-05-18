@@ -23,6 +23,7 @@ type AcquireResponse struct {
 	Request
 	Accepted bool      `json:"accepted"`
 	Message  string    `json:"message,omitempty"`
+	Limit    uint      `json:"limit"`
 	Leases   lease.Set `json:"lease"`
 }
 

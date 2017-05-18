@@ -129,6 +129,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 		response := transport.AcquireResponse{
 			Request:  req,
 			Accepted: accepted,
+			Limit:    limit,
 			Leases:   leases,
 		}
 
