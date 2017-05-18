@@ -55,6 +55,24 @@ func (s Set) Duration() (duration time.Duration) {
 	return
 }
 
+// Decay returns the lease decay for the policy set, which is the
+// maximum value within the set.
+//
+// If the set is empty, a zero value is returned.
+func (s Set) Decay() (decay time.Duration) {
+	if len(s) == 0 {
+		return 0
+	}
+
+	decay = s[0].Decay
+	for i := 1; i < len(s); i++ {
+		if s[i].Decay > decay {
+			decay = s[i].Decay
+		}
+	}
+	return
+}
+
 // Resource returns the first resource defined in the policy set.
 //
 // If the set is empty, the returned value will be blank.

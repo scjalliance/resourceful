@@ -19,7 +19,8 @@ type Policy struct {
 	Environment environment.Environment `json:"environment,omitempty"` // Overrides client-supplied environment
 	Criteria    Criteria                `json:"criteria,omitempty"`
 	Limit       uint                    `json:"limit,omitempty"`
-	Duration    time.Duration           `json:"duration,omitempty"` // Time between scheduled re-evaluations of the policy condition
+	Duration    time.Duration           `json:"duration,omitempty"` // Time before a leased resource is automatically released
+	Decay       time.Duration           `json:"decay,omitempty"`    // Time before a released resource is considered available again
 }
 
 // New returns a new policy for a particular resource with the given limit,
@@ -39,9 +40,11 @@ func (p *Policy) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		*jsonPolicy
 		Duration string `json:"duration"`
+		Decay    string `json:"decay"`
 	}{
 		jsonPolicy: (*jsonPolicy)(p),
 		Duration:   p.Duration.String(),
+		Decay:      p.Decay.String(),
 	})
 }
 
@@ -51,6 +54,7 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 	aux := &struct {
 		*jsonPolicy
 		Duration string `json:"duration"`
+		Decay    string `json:"decay"`
 	}{
 		jsonPolicy: (*jsonPolicy)(p),
 	}
@@ -60,6 +64,11 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 	}
 	if aux.Duration != "" {
 		if p.Duration, err = time.ParseDuration(aux.Duration); err != nil {
+			return err
+		}
+	}
+	if aux.Decay != "" {
+		if p.Decay, err = time.ParseDuration(aux.Decay); err != nil {
 			return err
 		}
 	}
