@@ -10,8 +10,8 @@ import (
 )
 
 func list(args []string) {
+	prepareConsole(false)
 
-	fmt.Println("executing list")
 	var criteria policy.Criteria
 	for _, target := range os.Args[2:] {
 		criteria = append(criteria, policy.Criterion{Component: policy.ComponentResource, Comparison: policy.ComparisonIgnoreCase, Value: target})
@@ -25,9 +25,15 @@ func list(args []string) {
 		os.Exit(2)
 	}
 
+	if len(procs) == 0 {
+		fmt.Println("No matching processes.")
+		os.Exit(0)
+	}
+
+	fmt.Print("Matching processes:")
 	for _, proc := range procs {
 		if pol.Match(proc.Executable(), "user", nil) {
-			fmt.Printf("%v\n", proc.Executable())
+			fmt.Printf("\n  %v", proc.Executable())
 		}
 	}
 }

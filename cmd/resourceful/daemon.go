@@ -15,6 +15,8 @@ import (
 )
 
 func daemon(args []string) {
+	prepareConsole(false)
+
 	log.Println("Starting resourceful guardian daemon")
 
 	wd, err := os.Getwd()
