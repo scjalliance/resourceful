@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -133,9 +132,6 @@ func post(address, resource, consumer string, env environment.Environment, respo
 	}
 
 	err = json.NewDecoder(r.Body).Decode(response)
-	if err != nil {
-		log.Print(err)
-	}
 
 	return
 }
