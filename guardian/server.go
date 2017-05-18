@@ -90,29 +90,22 @@ func healthHandler(cfg ServerConfig) http.Handler {
 // acquireHandler will attempt to acquire a lease for the specified resource.
 func acquireHandler(cfg ServerConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, err := parseRequest(r)
+		req, pol, err := initRequest(cfg, r)
 		if err != nil {
-			log.Printf("Bad request: %v\n", err)
+			log.Printf("Failed request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		prefix := fmt.Sprintf("%s - %s", req.Resource, req.Consumer)
+		prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
 
 		log.Printf("%s: Lease acquisition requested\n", prefix)
 
-		policies, err := cfg.PolicyProvider.Policies()
-		if err != nil {
-			log.Printf("%s: Failed to retrieve policies: %v\n", prefix, err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		}
-
-		applicable := policies.Match(req.Resource, req.Consumer, req.Environment)
-		limit := applicable.Limit()
-		duration := applicable.Duration()
+		limit := pol.Limit()
+		duration := pol.Duration()
 
 		l, allocation, accepted, err := cfg.LeaseProvider.Acquire(req.Resource, req.Consumer, req.Environment, limit, duration)
-		suffix := fmt.Sprintf("pol: %d, alloc: %d/%d, d: %v", len(applicable), allocation, limit, duration)
+		suffix := fmt.Sprintf("pol: %d, alloc: %d/%d, d: %v", len(pol), allocation, limit, duration)
 		if err != nil {
 			log.Printf("%s: Lease acquisition failed: %v (%s)\n", prefix, err, suffix)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -158,7 +151,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 // consumer.
 func releaseHandler(cfg ServerConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, err := parseRequest(r)
+		req, _, err := initRequest(cfg, r)
 		if err != nil {
 			log.Printf("Bad request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -194,6 +187,39 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 	})
 }
 
+func initRequest(cfg ServerConfig, r *http.Request) (req transport.Request, policies policy.Set, err error) {
+	req, err = parseRequest(r)
+	if err != nil {
+		err = fmt.Errorf("unable to parse request: %v", err)
+		return
+	}
+
+	all, err := cfg.PolicyProvider.Policies()
+	if err != nil {
+		err = fmt.Errorf("unable to retrieve policies: %v", err)
+		return
+	}
+
+	policies = all.Match(req.Resource, req.Consumer, req.Environment)
+
+	resource := policies.Resource()
+	if resource != "" {
+		req.Resource = resource
+	}
+
+	consumer := policies.Consumer()
+	if consumer != "" {
+		req.Consumer = consumer
+	}
+
+	if req.Resource == "" {
+		err = errors.New("resource not specified or determinable")
+	} else if req.Consumer == "" {
+		err = errors.New("consumer not specified or determinable")
+	}
+	return
+}
+
 func parseRequest(r *http.Request) (req transport.Request, err error) {
 	err = r.ParseForm()
 	if err != nil {
@@ -215,11 +241,6 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 			}
 			req.Environment[k] = value
 		}
-	}
-	if req.Resource == "" {
-		err = errors.New("resource not specified")
-	} else if req.Consumer == "" {
-		err = errors.New("consumer not specified")
 	}
 	return
 }

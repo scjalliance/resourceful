@@ -13,8 +13,8 @@ type HealthResponse struct {
 
 // Request represents a request from a resourceful client.
 type Request struct {
-	Resource    string                  `json:"resource"`
-	Consumer    string                  `json:"consumer"`
+	Resource    string                  `json:"resource,omitempty"`
+	Consumer    string                  `json:"consumer,omitempty"`
 	Environment environment.Environment `json:"environment,omitempty"`
 }
 

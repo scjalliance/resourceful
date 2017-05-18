@@ -54,3 +54,27 @@ func (s Set) Duration() (duration time.Duration) {
 	}
 	return
 }
+
+// Resource returns the first resource defined in the policy set.
+//
+// If the set is empty, the returned value will be blank.
+func (s Set) Resource() (resource string) {
+	for i := 0; i < len(s); i++ {
+		if s[i].Resource != "" {
+			return s[i].Resource
+		}
+	}
+	return ""
+}
+
+// Consumer returns the first consumer defined in the policy set.
+//
+// If the set is empty, the returned value will be blank.
+func (s Set) Consumer() (consumer string) {
+	for i := 0; i < len(s); i++ {
+		if s[i].Consumer != "" {
+			return s[i].Consumer
+		}
+	}
+	return ""
+}

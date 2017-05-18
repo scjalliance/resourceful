@@ -17,7 +17,7 @@ func list(args []string) {
 		criteria = append(criteria, policy.Criterion{Component: policy.ComponentResource, Comparison: policy.ComparisonIgnoreCase, Value: target})
 	}
 
-	pol := policy.New(1, time.Minute*5, criteria)
+	pol := policy.New("test", 1, time.Minute*5, criteria)
 
 	procs, err := ps.Processes()
 	if err != nil {

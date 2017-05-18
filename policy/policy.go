@@ -7,20 +7,25 @@ import (
 	"github.com/scjalliance/resourceful/environment"
 )
 
+// TODO: Use https://github.com/valyala/fasttemplate for consumer construction
+
 // Policy describes the matching conditions and rules for handling a particular
 // resource.
 //
 // A policy is applied only if all of its conditions are matched.
 type Policy struct {
-	Criteria Criteria      `json:"criteria"`
-	Limit    uint          `json:"limit"`
-	Duration time.Duration `json:"duration"` // Time between scheduled re-evaluations of the policy condition
-	// FIXME: JSON duration codec
+	Resource string        `json:"resource,omitempty"` // Overrides client-supplied resource
+	Consumer string        `json:"consumer,omitempty"` // Overrides client-supplied consumer
+	Criteria Criteria      `json:"criteria,omitempty"`
+	Limit    uint          `json:"limit,omitempty"`
+	Duration time.Duration `json:"duration,omitempty"` // Time between scheduled re-evaluations of the policy condition
 }
 
-// New returns a new policy with the given limit, duration and criteria.
-func New(limit uint, duration time.Duration, criteria Criteria) Policy {
+// New returns a new policy for a particular resource with the given limit,
+// duration and criteria.
+func New(resource string, limit uint, duration time.Duration, criteria Criteria) Policy {
 	return Policy{
+		Resource: resource,
 		Criteria: criteria,
 		Limit:    limit,
 		Duration: duration,
