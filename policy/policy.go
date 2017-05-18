@@ -14,11 +14,12 @@ import (
 //
 // A policy is applied only if all of its conditions are matched.
 type Policy struct {
-	Resource string        `json:"resource,omitempty"` // Overrides client-supplied resource
-	Consumer string        `json:"consumer,omitempty"` // Overrides client-supplied consumer
-	Criteria Criteria      `json:"criteria,omitempty"`
-	Limit    uint          `json:"limit,omitempty"`
-	Duration time.Duration `json:"duration,omitempty"` // Time between scheduled re-evaluations of the policy condition
+	Resource    string                  `json:"resource,omitempty"`    // Overrides client-supplied resource
+	Consumer    string                  `json:"consumer,omitempty"`    // Overrides client-supplied consumer
+	Environment environment.Environment `json:"environment,omitempty"` // Overrides client-supplied environment
+	Criteria    Criteria                `json:"criteria,omitempty"`
+	Limit       uint                    `json:"limit,omitempty"`
+	Duration    time.Duration           `json:"duration,omitempty"` // Time between scheduled re-evaluations of the policy condition
 }
 
 // New returns a new policy for a particular resource with the given limit,

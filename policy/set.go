@@ -78,3 +78,12 @@ func (s Set) Consumer() (consumer string) {
 	}
 	return ""
 }
+
+// Environment returns the merged environment of all policies in the set.
+func (s Set) Environment() (env environment.Environment) {
+	var envs []environment.Environment
+	for i := 0; i < len(s); i++ {
+		envs = append(envs, s[i].Environment)
+	}
+	return environment.Merge(envs...)
+}

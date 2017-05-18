@@ -11,3 +11,15 @@ func Clone(from Environment) (to Environment) {
 	}
 	return
 }
+
+// Merge returns each of the provided environments merged into a single map.
+// The source values are not modified.
+func Merge(env ...Environment) (merged Environment) {
+	merged = make(Environment)
+	for e := range env {
+		for k, v := range env[e] {
+			merged[k] = v
+		}
+	}
+	return
+}

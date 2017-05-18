@@ -207,10 +207,16 @@ func initRequest(cfg ServerConfig, r *http.Request) (req transport.Request, poli
 	if resource != "" {
 		req.Resource = resource
 	}
+	req.Environment["resource.id"] = req.Resource
 
 	consumer := policies.Consumer()
 	if consumer != "" {
 		req.Consumer = consumer
+	}
+
+	env := policies.Environment()
+	if len(env) > 0 {
+		req.Environment = environment.Merge(req.Environment, env)
 	}
 
 	if req.Resource == "" {
@@ -226,6 +232,7 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 	if err != nil {
 		return
 	}
+	req.Environment = make(environment.Environment)
 	for k, values := range r.Form {
 		if len(values) == 0 {
 			continue
@@ -237,9 +244,6 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 		case "consumer":
 			req.Consumer = value
 		default:
-			if req.Environment == nil {
-				req.Environment = make(environment.Environment)
-			}
 			req.Environment[k] = value
 		}
 	}
