@@ -103,8 +103,11 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 
 		limit := pol.Limit()
 		duration := pol.Duration()
+		decay := pol.Decay()
 
-		l, allocation, accepted, err := cfg.LeaseProvider.Acquire(req.Resource, req.Consumer, req.Environment, limit, duration)
+		// FIXME: Handle pending leases
+
+		l, allocation, accepted, err := cfg.LeaseProvider.Acquire(req.Resource, req.Consumer, req.Instance, req.Environment, limit, duration, decay)
 		suffix := fmt.Sprintf("pol: %d, alloc: %d/%d, d: %v", len(pol), allocation, limit, duration)
 		if err != nil {
 			log.Printf("%s: Lease acquisition failed: %v (%s)\n", prefix, err, suffix)
@@ -163,7 +166,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 
 		log.Printf("%s: Lease removal requested\n", prefix)
 
-		err = cfg.LeaseProvider.Release(req.Resource, req.Consumer)
+		err = cfg.LeaseProvider.Release(req.Resource, req.Consumer, req.Instance)
 		if err != nil {
 			log.Printf("%s: Lease removal failed: %v\n", prefix, err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -243,6 +246,8 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 			req.Resource = value
 		case "consumer":
 			req.Consumer = value
+		case "instance":
+			req.Instance = value
 		default:
 			req.Environment[k] = value
 		}

@@ -55,25 +55,25 @@ func NewClient(service string) (*Client, error) {
 }
 
 // Acquire will attempt to acquire a lease for the given resource and consumer.
-func (c *Client) Acquire(resource, consumer string, env environment.Environment) (response transport.AcquireResponse, err error) {
-	err = c.query("acquire", resource, consumer, env, &response)
+func (c *Client) Acquire(resource, consumer, instance string, env environment.Environment) (response transport.AcquireResponse, err error) {
+	err = c.query("acquire", resource, consumer, instance, env, &response)
 	return
 }
 
 // Release will attempt to remove the lease for the given resource and consumer.
-func (c *Client) Release(resource, consumer string) (response transport.ReleaseResponse, err error) {
-	err = c.query("release", resource, consumer, nil, &response)
+func (c *Client) Release(resource, consumer, instance string) (response transport.ReleaseResponse, err error) {
+	err = c.query("release", resource, consumer, instance, nil, &response)
 	return
 }
 
 // query works through the services list in-order looking for a
 // service endpoint that can successfully service the query.
-func (c *Client) query(path string, resource, consumer string, env environment.Environment, response interface{}) (err error) {
+func (c *Client) query(path string, resource, consumer, instance string, env environment.Environment, response interface{}) (err error) {
 	var failed []error
 
 	// Try to use the same endpoint as last time if we've already selected one
 	if len(c.endpoint) > 0 {
-		err = post(c.endpoint+path, resource, consumer, env, response)
+		err = post(c.endpoint+path, resource, consumer, instance, env, response)
 		if err == nil {
 			return
 		}
@@ -84,7 +84,7 @@ func (c *Client) query(path string, resource, consumer string, env environment.E
 	for _, service := range c.services {
 		for _, addr := range service.Addrs {
 			endpoint := "http://" + strings.TrimRight(addr.Target, ".") + ":" + strconv.Itoa((int)(addr.Port)) + "/"
-			err = post(endpoint+path, resource, consumer, env, response)
+			err = post(endpoint+path, resource, consumer, instance, env, response)
 			if err == nil {
 				c.endpoint = endpoint
 				return
@@ -106,13 +106,16 @@ func (c *Client) query(path string, resource, consumer string, env environment.E
 	return
 }
 
-func post(address, resource, consumer string, env environment.Environment, response interface{}) (err error) {
+func post(address, resource, consumer, instance string, env environment.Environment, response interface{}) (err error) {
 	v := url.Values{}
 	if resource != "" {
 		v.Set("resource", resource)
 	}
 	if consumer != "" {
 		v.Set("consumer", consumer)
+	}
+	if instance != "" {
+		v.Set("instance", instance)
 	}
 	if env != nil {
 		for key, value := range env {

@@ -4,9 +4,9 @@ package lease
 type Set []Lease
 
 // Match returns the subset of leases which match the given parameters.
-func (s Set) Match(resource, consumer string) (matches Set) {
+func (s Set) Match(resource, consumer, instance string) (matches Set) {
 	for p := range s {
-		if s[p].Match(resource, consumer) {
+		if s[p].Match(resource, consumer, instance) {
 			matches = append(matches, s[p])
 		}
 	}
@@ -15,9 +15,9 @@ func (s Set) Match(resource, consumer string) (matches Set) {
 
 // Index returns the index of the first lease within s that matches the given
 // parameters, or -1 if no such lease is present in s.
-func (s Set) Index(resource, consumer string) (index int) {
+func (s Set) Index(resource, consumer, instance string) (index int) {
 	for p := range s {
-		if s[p].Match(resource, consumer) {
+		if s[p].Match(resource, consumer, instance) {
 			return p
 		}
 	}

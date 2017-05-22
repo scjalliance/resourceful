@@ -35,7 +35,7 @@ func (p *Provider) Leases(resource string) (leases lease.Set, err error) {
 
 // Acquire will attempt to create or renew a lease for the given resource and
 // consumer.
-func (p *Provider) Acquire(resource, consumer string, env environment.Environment, limit uint, duration time.Duration) (result lease.Lease, allocation uint, accepted bool, err error) {
+func (p *Provider) Acquire(resource, consumer, instance string, env environment.Environment, limit uint, duration, decay time.Duration) (result lease.Lease, allocation uint, accepted bool, err error) {
 	now := time.Now()
 
 	p.mutex.Lock()
@@ -46,12 +46,15 @@ func (p *Provider) Acquire(resource, consumer string, env environment.Environmen
 	// Check to see whether this is a renewal or an existing allocation
 	index := -1
 	if len(p.leases) > 0 {
-		index = p.leases.Index(resource, consumer)
+		index = p.leases.Index(resource, consumer, instance)
 	}
+
+	// Determine whether this is a new allocation
 
 	// If this is a new allocation, check whether we've already exceeded the limit
 	allocation = p.allocations[resource]
 	if index == -1 && allocation >= limit {
+		// FIXME: Handle pending leases
 		return
 	}
 
@@ -63,9 +66,12 @@ func (p *Provider) Acquire(resource, consumer string, env environment.Environmen
 	// Record the lease
 	result.Resource = resource
 	result.Consumer = consumer
+	result.Instance = instance
 	result.Environment = env
+	result.Status = lease.Active
 	result.Renewed = now
 	result.Duration = duration
+	result.Decay = decay
 
 	if index == -1 {
 		// This is a new lease
@@ -86,7 +92,7 @@ func (p *Provider) Acquire(resource, consumer string, env environment.Environmen
 
 // Update will update the environment associated with a lease. It will not
 // renew the lease.
-func (p *Provider) Update(resource, consumer string, env environment.Environment) (result lease.Lease, err error) {
+func (p *Provider) Update(resource, consumer, instance string, env environment.Environment) (result lease.Lease, err error) {
 	err = errors.New("Lease updating has not been written yet")
 
 	p.mutex.Lock()
@@ -94,7 +100,7 @@ func (p *Provider) Update(resource, consumer string, env environment.Environment
 
 	p.cull()
 
-	index := p.leases.Index(resource, consumer)
+	index := p.leases.Index(resource, consumer, instance)
 	if index == -1 {
 		// TODO: Return error?
 		return
@@ -105,8 +111,8 @@ func (p *Provider) Update(resource, consumer string, env environment.Environment
 	return
 }
 
-// Release will remove the lease for the given resource and consumer.
-func (p *Provider) Release(resource, consumer string) (err error) {
+// Release will remove the lease for the given resource, consumer and instance.
+func (p *Provider) Release(resource, consumer, instance string) (err error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -115,7 +121,7 @@ func (p *Provider) Release(resource, consumer string) (err error) {
 	// Look for the lease, which might not exist after the cull
 	index := -1
 	if len(p.leases) > 0 {
-		index = p.leases.Index(resource, consumer)
+		index = p.leases.Index(resource, consumer, instance)
 	}
 
 	// Exit if there's no lease to remove

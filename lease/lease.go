@@ -10,15 +10,19 @@ import (
 type Lease struct {
 	Resource    string                  `json:"resource"`    // The thing that is being leased
 	Consumer    string                  `json:"consumer"`    // The entity that holds the lease
+	Instance    string                  `json:"instance"`    // Optional identifier of a particular lease instance
 	Environment environment.Environment `json:"environment"` // Map of additional properties of the lease
-	Started     time.Time               `json:"started"`
-	Renewed     time.Time               `json:"renewed"`
+	Status      Status                  `json:"status"`
+	Started     time.Time               `json:"started,omitempty"`
+	Renewed     time.Time               `json:"renewed,omitempty"`
+	Released    time.Time               `json:"released,omitempty"`
 	Duration    time.Duration           `json:"duration"`
+	Decay       time.Duration           `json:"decay"`
 }
 
-// Match returns true if the lease is for the given resource and consumer.
-func (l *Lease) Match(resource, consumer string) bool {
-	return l.Resource == resource && l.Consumer == consumer
+// Match returns true if the lease is for the given resource, consumer and instance.
+func (l *Lease) Match(resource, consumer, instance string) bool {
+	return l.Resource == resource && l.Consumer == consumer && l.Instance == instance
 }
 
 // Expired returns true if the lease has expired.

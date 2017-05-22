@@ -15,16 +15,18 @@ type HealthResponse struct {
 type Request struct {
 	Resource    string                  `json:"resource,omitempty"`
 	Consumer    string                  `json:"consumer,omitempty"`
+	Instance    string                  `json:"instance,omitempty"`
 	Environment environment.Environment `json:"environment,omitempty"`
 }
 
 // AcquireResponse reports the result of a resource acquisition attempt.
 type AcquireResponse struct {
 	Request
-	Accepted bool      `json:"accepted"`
-	Message  string    `json:"message,omitempty"`
-	Limit    uint      `json:"limit"`
-	Leases   lease.Set `json:"lease"`
+	Accepted bool        `json:"accepted"`
+	Lease    lease.Lease `json:"lease,omitempty"`
+	Limit    uint        `json:"limit"`
+	Leases   lease.Set   `json:"leases"`
+	Message  string      `json:"message,omitempty"`
 }
 
 // ReleaseResponse reports the result of a resource release attempt.
