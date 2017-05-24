@@ -38,3 +38,61 @@ func (s Set) Environment(keys ...string) (values []string) {
 	}
 	return
 }
+
+// Len is the number of leases in the collection.
+func (s Set) Len() int {
+	return len(s)
+}
+
+// Less reports whether the lease with index i should sort before the lease
+// with index j.
+//
+// Leases of greater permanence come before leases of lesser permanence.
+func (s Set) Less(i, j int) bool {
+	o1 := s[i].Status.Order()
+	o2 := s[j].Status.Order()
+	if o1 < o2 {
+		return true
+	}
+	if o1 > o2 {
+		return false
+	}
+
+	switch s[i].Status {
+	case Released:
+		r1 := s[i].Released
+		r2 := s[j].Released
+		e1 := r1.Add(s[i].Decay)
+		e2 := r2.Add(s[j].Decay)
+		// Expiration: Latest first
+		if e1.After(e2) {
+			return true
+		}
+		if e1.Before(e2) {
+			return false
+		}
+		// Release: Oldest first
+		if r1.Before(r2) {
+			return true
+		}
+		if r1.After(r2) {
+			return false
+		}
+		fallthrough
+	case Active, Queued:
+		s1 := s[i].Started
+		s2 := s[j].Started
+		if s1.Before(s2) {
+			return true
+		}
+		if s1.After(s2) {
+			return false
+		}
+	}
+	return false
+}
+
+// Swap swaps the leases with indices i and j.
+func (s Set) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
