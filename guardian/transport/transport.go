@@ -22,11 +22,9 @@ type Request struct {
 // AcquireResponse reports the result of a resource acquisition attempt.
 type AcquireResponse struct {
 	Request
-	Accepted bool        `json:"accepted"`
-	Lease    lease.Lease `json:"lease,omitempty"`
-	Limit    uint        `json:"limit"`
-	Leases   lease.Set   `json:"leases"`
-	Message  string      `json:"message,omitempty"`
+	Lease   lease.Lease `json:"lease,omitempty"`
+	Leases  lease.Set   `json:"leases"`
+	Message string      `json:"message,omitempty"`
 }
 
 // ReleaseResponse reports the result of a resource release attempt.

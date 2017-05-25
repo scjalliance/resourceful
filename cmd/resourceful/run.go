@@ -13,6 +13,7 @@ import (
 
 	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 func runError(err error) {
@@ -42,33 +43,40 @@ func run(args []string) {
 	if err != nil {
 		runError(fmt.Errorf("unable to request lease: %v", err))
 	}
+
 	consumers := strings.Join(acquisition.Leases.Environment("user.name"), ", ")
-	if acquisition.Accepted {
+	switch acquisition.Lease.Status {
+	case lease.Active:
 		log.Printf("Resource request for %s granted", acquisition.Resource)
 		log.Printf("Users: %s", consumers)
-	} else {
+
+		cmd := exec.Command(args[0], args[1:]...)
+		err = cmd.Start()
+		if err != nil {
+			runError(err)
+		}
+
+		log.Printf("Waiting for command to finish...")
+
+		// TODO: Renew lease every duration/2
+
+		err = cmd.Wait()
+		if err != nil {
+			log.Printf("Command finished with error: %v\n", err)
+		} else {
+			log.Printf("Command finished: %v\n", err)
+		}
+	case lease.Queued:
+		log.Printf("Resource request for %s queued", acquisition.Resource)
+		log.Printf("Users: %s", consumers)
+
+		leasePendingDlg(resource, acquisition)
+	default:
 		log.Printf("Resource request for %s rejected", acquisition.Resource)
 		log.Printf("Users: %s", consumers)
-		leaseRejectedDlg(resource, acquisition)
-		os.Exit(0)
+		os.Exit(-2)
 	}
 
-	cmd := exec.Command(args[0], args[1:]...)
-	err = cmd.Start()
-	if err != nil {
-		runError(err)
-	}
-
-	log.Printf("Waiting for command to finish...")
-
-	// TODO: Renew lease every duration/2
-
-	err = cmd.Wait()
-	if err != nil {
-		log.Printf("Command finished with error: %v\n", err)
-	} else {
-		log.Printf("Command finished: %v\n", err)
-	}
 	release, err := client.Release(acquisition.Resource, acquisition.Consumer, acquisition.Instance)
 	if err != nil {
 		log.Fatal(err)

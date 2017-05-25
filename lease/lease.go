@@ -16,25 +16,52 @@ type Lease struct {
 	Started     time.Time               `json:"started,omitempty"`
 	Renewed     time.Time               `json:"renewed,omitempty"`
 	Released    time.Time               `json:"released,omitempty"`
+	Limit       uint                    `json:"limit"`
 	Duration    time.Duration           `json:"duration"`
 	Decay       time.Duration           `json:"decay"`
 }
 
-// Match returns true if the lease is for the given resource, consumer and instance.
-func (l *Lease) Match(resource, consumer, instance string) bool {
-	return l.Resource == resource && l.Consumer == consumer && l.Instance == instance
+// MatchConsumer returns true if the lease is for the given resource and consumer.
+func (ls *Lease) MatchConsumer(resource, consumer string) (matched bool) {
+	return ls.Resource == resource && ls.Consumer == consumer
 }
 
-// Expired returns true if the lease has expired.
-func (l *Lease) Expired() bool {
-	expiration := l.Renewed.Add(l.Duration)
-	return time.Now().After(expiration)
+// MatchInstance returns true if the lease is for the given resource,
+// consumer and instance.
+func (ls *Lease) MatchInstance(resource, consumer, instance string) (matched bool) {
+	return ls.Resource == resource && ls.Consumer == consumer && ls.Instance == instance
+}
+
+// MatchStatus returns true if the lease has the given status.
+func (ls *Lease) MatchStatus(status Status) (matched bool) {
+	return ls.Status == status
+}
+
+// Expired returns true if the lease will be expired at the given time.
+func (ls *Lease) Expired(at time.Time) bool {
+	expiration := ls.Renewed.Add(ls.Duration)
+	return at.After(expiration)
+}
+
+// Decayed returns true if the lease will be expired and have exceeded the
+// duration of its decay at the given time.
+func (ls *Lease) Decayed(at time.Time) bool {
+	decay := ls.Renewed.Add(ls.Duration).Add(ls.Decay)
+	return at.After(decay)
 }
 
 // Clone returns a deep copy of the lease.
 func Clone(from Lease) (to Lease) {
 	to.Resource = from.Resource
 	to.Consumer = from.Consumer
+	to.Instance = from.Instance
 	to.Environment = environment.Clone(from.Environment)
+	to.Status = from.Status
+	to.Started = from.Started
+	to.Renewed = from.Renewed
+	to.Released = from.Released
+	to.Limit = from.Limit
+	to.Duration = from.Duration
+	to.Decay = from.Decay
 	return
 }

@@ -1,15 +1,12 @@
 package lease
 
-import (
-	"time"
-
-	"github.com/scjalliance/resourceful/environment"
-)
-
-// Provider is a lease management interface.
+// Provider is a lease management interface. It provides access to transactions
+// for specific resources.
 type Provider interface {
-	Leases(resource string) (leases Set, err error) // An empty resource returns all leases
-	Acquire(resource, consumer, instance string, env environment.Environment, limit uint, duration, decay time.Duration) (result Lease, allocation uint, accepted bool, err error)
-	Update(resource, consumer, instance string, env environment.Environment) (result Lease, err error)
-	Release(resource, consumer, instance string) (err error)
+	// LeaseView returns the current revision and lease set for the resource.
+	LeaseView(resource string) (revision uint64, leases Set, err error)
+
+	// LeaseCommit will attempt to apply the operations described in the lease
+	// transaction.
+	LeaseCommit(tx *Tx) (err error)
 }

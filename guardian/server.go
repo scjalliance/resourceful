@@ -13,6 +13,7 @@ import (
 	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian/transport"
 	"github.com/scjalliance/resourceful/lease"
+	"github.com/scjalliance/resourceful/lease/leaseutil"
 	"github.com/scjalliance/resourceful/policy"
 )
 
@@ -105,44 +106,99 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 		duration := pol.Duration()
 		decay := pol.Decay()
 
-		// FIXME: Handle pending leases
+		var leases lease.Set
+		var ls lease.Lease
+		mode := "Creation" // Only used for logging
 
-		l, allocation, accepted, err := cfg.LeaseProvider.Acquire(req.Resource, req.Consumer, req.Instance, req.Environment, limit, duration, decay)
-		suffix := fmt.Sprintf("pol: %d, alloc: %d/%d, d: %v", len(pol), allocation, limit, duration)
+		for attempt := 0; attempt < 5; attempt++ {
+			var revision uint64
+
+			revision, leases, err = cfg.LeaseProvider.LeaseView(req.Resource)
+			if err != nil {
+				log.Printf("%s: Lease retrieval failed: %v\n", prefix, err)
+			}
+			now := time.Now()
+
+			ls = lease.Lease{
+				Resource:    req.Resource,
+				Consumer:    req.Consumer,
+				Instance:    req.Instance,
+				Environment: req.Environment,
+				Renewed:     now,
+				Limit:       limit,
+				Duration:    duration,
+				Decay:       decay,
+			}
+
+			tx := lease.NewTx(req.Resource, revision, leases)
+
+			leaseutil.Refresh(tx, now)
+
+			existing, found := tx.Instance(req.Consumer, req.Instance)
+			if found {
+				// Lease renewal
+				mode = "Renewal"
+				ls.Status = existing.Status
+				ls.Started = existing.Started
+				tx.Update(existing.Consumer, existing.Instance, ls)
+			} else {
+				replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
+				if l := len(replaceable); l > 0 {
+					// Lease replacement (for an expired or released lease previously
+					// issued to the the same consumer, that's in a decaying state)
+					replaced := replaceable[l-1]
+					ls.Status = lease.Active
+					ls.Started = now
+					tx.Update(replaced.Consumer, replaced.Instance, ls)
+				} else {
+					// New lease
+					active, released, _ := tx.Stats()
+					if active+released < limit {
+						ls.Status = lease.Active
+					} else {
+						ls.Status = lease.Queued
+					}
+					ls.Started = now
+					tx.Create(ls)
+				}
+			}
+
+			//suffix := fmt.Sprintf("pol: %d, alloc: %d/%d, d: %v", len(pol), allocation, limit, duration)
+
+			// Attempt to commit the transaction
+			err = cfg.LeaseProvider.LeaseCommit(tx)
+			if err == nil {
+				leases = tx.Leases()
+				break
+			}
+
+			log.Printf("%s: Lease acquisition failed: %v\n", prefix, err)
+		}
+
 		if err != nil {
-			log.Printf("%s: Lease acquisition failed: %v (%s)\n", prefix, err, suffix)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		if accepted {
-			log.Printf("%s: Lease acquisition accepted (%s)\n", prefix, suffix)
-		} else {
-			log.Printf("%s: Lease acquisition rejected (%s)\n", prefix, suffix)
-		}
-
-		leases, err := cfg.LeaseProvider.Leases(req.Resource)
-		if err != nil {
-			// Log the error but return a lease set with our lease, which is the only
-			// one that we know of.
-			log.Printf("%s: Lease enumeration failed: %v (%s)\n", prefix, err, suffix)
-			leases = lease.Set{l}
-		}
+		active, released, queued := leases.Stats()
+		stats := fmt.Sprintf("alloc: %d/%d active: %d, released: %d, queued: %d", active+released, limit, active, released, queued)
+		log.Printf("%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, stats)
 
 		response := transport.AcquireResponse{
-			Request:  req,
-			Accepted: accepted,
-			Limit:    limit,
-			Leases:   leases,
+			Request: req,
+			Lease:   ls,
+			Leases:  leases,
 		}
 
-		if !accepted {
-			response.Message = fmt.Sprintf("Resource limit of %d has already been met", limit)
-		}
+		/*
+			if !accepted {
+				response.Message = fmt.Sprintf("Resource limit of %d has already been met", limit)
+			}
+		*/
 
 		data, err := json.Marshal(response)
 		if err != nil {
-			log.Printf("%s: Failed to marshal response: %v (%s)\n", prefix, err, suffix)
+			log.Printf("%s: Failed to marshal response: %v\n", prefix, err)
 			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
 			return
 		}
@@ -155,7 +211,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 // consumer.
 func releaseHandler(cfg ServerConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, _, err := initRequest(cfg, r)
+		req, pol, err := initRequest(cfg, r)
 		if err != nil {
 			log.Printf("Bad request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -166,14 +222,49 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 
 		log.Printf("%s: Lease removal requested\n", prefix)
 
-		err = cfg.LeaseProvider.Release(req.Resource, req.Consumer, req.Instance)
-		if err != nil {
+		limit := pol.Limit()
+
+		var leases lease.Set
+		var ls lease.Lease
+		var found bool
+
+		for attempt := 0; attempt < 5; attempt++ {
+			var revision uint64
+			revision, leases, err = cfg.LeaseProvider.LeaseView(req.Resource)
+			if err != nil {
+				log.Printf("%s: Lease retrieval failed: %v\n", prefix, err)
+			}
+			now := time.Now()
+
+			// Prepare a delete transaction
+			tx := lease.NewTx(req.Resource, revision, leases)
+			leaseutil.Refresh(tx, now) // Update stale values
+			ls, found = tx.Instance(req.Consumer, req.Instance)
+			tx.Delete(req.Consumer, req.Instance)
+			leaseutil.Refresh(tx, now) // Updates leases after delete
+
+			// Attempt to commit the transaction
+			err = cfg.LeaseProvider.LeaseCommit(tx)
+			if err == nil {
+				leases = tx.Leases()
+				break
+			}
+
 			log.Printf("%s: Lease removal failed: %v\n", prefix, err)
+		}
+
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("%s: Lease removal succeeded\n", prefix)
+		active, released, queued := leases.Stats()
+		stats := fmt.Sprintf("alloc: %d/%d active: %d, released: %d, queued: %d", active+released, limit, active, released, queued)
+		if found {
+			log.Printf("%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, stats)
+		} else {
+			log.Printf("%s: Lease removal ignored because the lease could not be found (%s)\n", prefix, stats)
+		}
 
 		response := transport.ReleaseResponse{
 			Request: req,

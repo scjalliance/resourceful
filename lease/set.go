@@ -3,11 +3,23 @@ package lease
 // Set is a set of leases.
 type Set []Lease
 
-// Match returns the subset of leases which match the given parameters.
-func (s Set) Match(resource, consumer, instance string) (matches Set) {
-	for p := range s {
-		if s[p].Match(resource, consumer, instance) {
-			matches = append(matches, s[p])
+// Consumer returns the set of leases matching the requested resource and
+// consumer.
+func (s Set) Consumer(resource, consumer string) (matched Set) {
+	for i := range s {
+		if s[i].MatchConsumer(resource, consumer) {
+			matched = append(matched, Clone(s[i]))
+		}
+	}
+	return
+}
+
+// Instance returns the first lease that matches the requested resource,
+// consumer and instance.
+func (s Set) Instance(resource, consumer, instance string) (ls Lease, found bool) {
+	for i := range s {
+		if s[i].MatchInstance(resource, consumer, instance) {
+			return Clone(s[i]), true
 		}
 	}
 	return
@@ -16,9 +28,9 @@ func (s Set) Match(resource, consumer, instance string) (matches Set) {
 // Index returns the index of the first lease within s that matches the given
 // parameters, or -1 if no such lease is present in s.
 func (s Set) Index(resource, consumer, instance string) (index int) {
-	for p := range s {
-		if s[p].Match(resource, consumer, instance) {
-			return p
+	for i := range s {
+		if s[i].MatchInstance(resource, consumer, instance) {
+			return i
 		}
 	}
 	return -1
@@ -34,6 +46,31 @@ func (s Set) Environment(keys ...string) (values []string) {
 				values = append(values, value)
 				break
 			}
+		}
+	}
+	return
+}
+
+// Status returns the subset of leases with the requested status.
+func (s Set) Status(status Status) (matched Set) {
+	for i := range s {
+		if s[i].MatchStatus(status) {
+			matched = append(matched, Clone(s[i]))
+		}
+	}
+	return
+}
+
+// Stats returns the number of leases with each status.
+func (s Set) Stats() (active, released, pending uint) {
+	for _, ls := range s {
+		switch ls.Status {
+		case Active:
+			active++
+		case Released:
+			released++
+		case Queued:
+			pending++
 		}
 	}
 	return

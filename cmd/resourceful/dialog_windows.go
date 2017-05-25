@@ -16,7 +16,7 @@ func msgBox(title, msg string) {
 	walk.MsgBox(nil, title, msg, walk.MsgBoxIconInformation)
 }
 
-func leaseRejectedDlg(program string, response transport.AcquireResponse) {
+func leasePendingDlg(program string, response transport.AcquireResponse) {
 	icon, err := walk.NewIconFromResourceId(5)
 	if err != nil {
 		icon = walk.IconInformation()
@@ -27,9 +27,11 @@ func leaseRejectedDlg(program string, response transport.AcquireResponse) {
 		resName = rn
 	}
 
+	active, released, _ := response.Leases.Stats()
+
 	title := fmt.Sprintf("Unable to launch %s", program)
-	label1 := fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", resName, len(response.Leases), response.Limit)
-	label2 := fmt.Sprintf("Here's a list of everyone that's using a license right now:")
+	label1 := fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", resName, active+released, response.Lease.Limit)
+	label2 := fmt.Sprintf("Here's a list of everyone that's using or waiting for a license right now:")
 
 	var dlg *walk.Dialog
 
@@ -71,9 +73,11 @@ func leaseRejectedDlg(program string, response transport.AcquireResponse) {
 				Column:     0,
 				ColumnSpan: 2,
 				Columns: []TableViewColumn{
+					TableViewColumn{Name: "Status", Width: 50},
 					TableViewColumn{Title: "User", Width: 200},
 					TableViewColumn{Name: "Computer", Width: 150},
-					TableViewColumn{Name: "Time", Width: 100, Alignment: AlignFar},
+					TableViewColumn{Name: "Time", Width: 50},
+					TableViewColumn{Name: "Earliest Availability", Width: 110},
 				},
 				Model: m,
 			},
@@ -110,17 +114,32 @@ func (lm *leaseModel) RowCount() int {
 }
 
 func (lm *leaseModel) Value(row, col int) interface{} {
-	l := lm.items[row]
+	ls := lm.items[row]
 
 	switch col {
 	case 0:
-		return l.Environment["user.name"]
+		return ls.Status
 	case 1:
-		return l.Environment["host.name"]
+		return ls.Environment["user.name"]
 	case 2:
-		started := l.Started.Round(time.Second)
+		return ls.Environment["host.name"]
+	case 3:
+		started := ls.Started.Round(time.Second)
 		now := time.Now().Round(time.Second)
 		return now.Sub(started).String()
+	case 4:
+		if ls.Decay == 0 {
+			return ""
+		}
+		switch ls.Status {
+		case lease.Active:
+			return ls.Decay.String()
+		case lease.Released:
+			available := ls.Released.Add(ls.Decay)
+			return available.Sub(time.Now()).String()
+		default:
+			return ""
+		}
 	}
 	return nil
 }
