@@ -21,6 +21,7 @@ func Refresh(tx *lease.Tx, at time.Time) {
 
 			if iter.Expired(at) {
 				iter.Status = lease.Released
+				iter.Released = iter.Renewed.Add(iter.Duration)
 				iter.Update()
 			}
 
