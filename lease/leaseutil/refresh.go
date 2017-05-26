@@ -31,6 +31,11 @@ func Refresh(tx *lease.Tx, at time.Time) {
 				iter.Delete()
 			}
 		case lease.Queued:
+			if iter.Expired(at) {
+				iter.Delete()
+				return
+			}
+
 			if allocation < iter.Limit {
 				iter.Status = lease.Active
 				iter.Update()
