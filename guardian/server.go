@@ -142,23 +142,24 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				ls.Started = existing.Started
 				tx.Update(existing.Consumer, existing.Instance, ls)
 			} else {
+				active, released, _ := tx.Stats()
 				replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
-				if l := len(replaceable); l > 0 {
+
+				ls.Started = now
+
+				if l := len(replaceable); l > 0 && active+released <= limit {
 					// Lease replacement (for an expired or released lease previously
 					// issued to the the same consumer, that's in a decaying state)
 					replaced := replaceable[l-1]
 					ls.Status = lease.Active
-					ls.Started = now
 					tx.Update(replaced.Consumer, replaced.Instance, ls)
 				} else {
 					// New lease
-					active, released, _ := tx.Stats()
 					if active+released < limit {
 						ls.Status = lease.Active
 					} else {
 						ls.Status = lease.Queued
 					}
-					ls.Started = now
 					tx.Create(ls)
 				}
 			}
@@ -220,7 +221,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 
 		prefix := fmt.Sprintf("%s - %s", req.Resource, req.Consumer)
 
-		log.Printf("%s: Lease removal requested\n", prefix)
+		log.Printf("%s: Release requested\n", prefix)
 
 		limit := pol.Limit()
 
@@ -232,16 +233,17 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 			var revision uint64
 			revision, leases, err = cfg.LeaseProvider.LeaseView(req.Resource)
 			if err != nil {
-				log.Printf("%s: Lease retrieval failed: %v\n", prefix, err)
+				log.Printf("%s: Release failed: %v\n", prefix, err)
+				continue
 			}
-			now := time.Now()
 
 			// Prepare a delete transaction
+			now := time.Now()
 			tx := lease.NewTx(req.Resource, revision, leases)
 			leaseutil.Refresh(tx, now) // Update stale values
 			ls, found = tx.Instance(req.Consumer, req.Instance)
-			tx.Delete(req.Consumer, req.Instance)
-			leaseutil.Refresh(tx, now) // Updates leases after delete
+			tx.Release(req.Consumer, req.Instance, now)
+			leaseutil.Refresh(tx, now) // Updates leases after release
 
 			// Attempt to commit the transaction
 			err = cfg.LeaseProvider.LeaseCommit(tx)
@@ -250,7 +252,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 				break
 			}
 
-			log.Printf("%s: Lease removal failed: %v\n", prefix, err)
+			log.Printf("%s: Release failed: %v\n", prefix, err)
 		}
 
 		if err != nil {
@@ -261,9 +263,13 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 		active, released, queued := leases.Stats()
 		stats := fmt.Sprintf("alloc: %d/%d active: %d, released: %d, queued: %d", active+released, limit, active, released, queued)
 		if found {
-			log.Printf("%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, stats)
+			if ls.Status == lease.Released {
+				log.Printf("%s: Release ignored because the lease had already been released (%s)\n", prefix, stats)
+			} else {
+				log.Printf("%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, stats)
+			}
 		} else {
-			log.Printf("%s: Lease removal ignored because the lease could not be found (%s)\n", prefix, stats)
+			log.Printf("%s: Release ignored because the lease could not be found (%s)\n", prefix, stats)
 		}
 
 		response := transport.ReleaseResponse{
