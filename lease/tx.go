@@ -25,31 +25,42 @@ func NewTx(resource string, revision uint64, leases Set) *Tx {
 // function to it.
 func (tx *Tx) Process(process Processor) {
 	for i := 0; i < len(tx.leases); i++ {
-		iter := Iter{
-			Lease: Clone(tx.leases[i]),
-		}
-
+		iter := Iter{Lease: Clone(tx.leases[i])}
 		process(&iter)
-
-		switch iter.action {
-		case Update:
-			tx.ops = append(tx.ops, Op{
-				Type:     Update,
-				Previous: tx.leases[i],
-				Lease:    iter.Lease,
-			})
-			tx.leases[i] = iter.Lease
-		case Delete:
-			tx.ops = append(tx.ops, Op{
-				Type:     Delete,
-				Previous: tx.leases[i],
-			})
-			tx.leases = append(tx.leases[:i], tx.leases[i+1:]...)
-			i--
-		}
+		i += tx.apply(iter.action, iter.Lease, i, 1)
 	}
-
 	sort.Sort(tx.leases)
+}
+
+// ProcessReverse iterates through each lease in reverse order and applies the
+// given lease processing function to it.
+func (tx *Tx) ProcessReverse(process Processor) {
+	for i := 0; i < len(tx.leases); i++ {
+		iter := Iter{Lease: Clone(tx.leases[i])}
+		process(&iter)
+		i += tx.apply(iter.action, iter.Lease, i, 1)
+	}
+	sort.Sort(tx.leases)
+}
+
+func (tx *Tx) apply(action Action, ls Lease, i int, step int) (shift int) {
+	switch action {
+	case Update:
+		tx.ops = append(tx.ops, Op{
+			Type:     Update,
+			Previous: tx.leases[i],
+			Lease:    ls,
+		})
+		tx.leases[i] = ls
+	case Delete:
+		tx.ops = append(tx.ops, Op{
+			Type:     Delete,
+			Previous: tx.leases[i],
+		})
+		tx.leases = append(tx.leases[:i], tx.leases[i+1:]...)
+		shift = -step
+	}
+	return
 }
 
 // Resource returns the resource the transaction will operate on.
