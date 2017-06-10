@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gentlemanautomaton/serviceresolver"
 	"github.com/scjalliance/resourceful/environment"
@@ -58,6 +59,18 @@ func NewClient(service string) (*Client, error) {
 func (c *Client) Acquire(resource, consumer, instance string, env environment.Environment) (response transport.AcquireResponse, err error) {
 	err = c.query("acquire", resource, consumer, instance, env, &response)
 	return
+}
+
+// Maintain will attempt to acquire and automatically renew a lease until ctx
+// is cancelled. When ctx is cancelled the lease will be released.
+//
+// The result of each acquisition or observation will be retuned via the
+// lease manager to all listeners.
+//
+// If retry is a non-zero duration the maintainer will attempt to acquire a
+// lease on an interval of retry.
+func (c *Client) Maintain(ctx context.Context, resource, consumer, instance string, env environment.Environment, retry time.Duration) (lm *LeaseMaintainer) {
+	return newLeaseMaintainer(ctx, c, resource, consumer, instance, env, retry)
 }
 
 // Release will attempt to remove the lease for the given resource and consumer.
