@@ -1,6 +1,9 @@
 package lease
 
-import "sort"
+import (
+	"sort"
+	"time"
+)
 
 // Tx is a lease transaction that describes a series of operations to be
 // atomically applied to a lease set.
@@ -106,6 +109,20 @@ func (tx *Tx) Update(consumer, instance string, ls Lease) error {
 		if iter.MatchInstance(tx.resource, consumer, instance) {
 			iter.Lease = Clone(ls)
 			iter.Update()
+		}
+	})
+	return nil
+}
+
+// Release will change the status of the lease to released.
+func (tx *Tx) Release(consumer, instance string, at time.Time) error {
+	tx.Process(func(iter *Iter) {
+		if iter.MatchInstance(tx.resource, consumer, instance) {
+			if iter.Status != Released {
+				iter.Status = Released
+				iter.Released = at
+				iter.Update()
+			}
 		}
 	})
 	return nil
