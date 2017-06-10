@@ -37,17 +37,30 @@ func (ls *Lease) MatchStatus(status Status) (matched bool) {
 	return ls.Status == status
 }
 
-// Expired returns true if the lease will be expired at the given time.
-func (ls *Lease) Expired(at time.Time) bool {
-	expiration := ls.Renewed.Add(ls.Duration)
-	return at.After(expiration)
+// ExpirationTime returns the time at which the lease expires.
+func (ls *Lease) ExpirationTime() time.Time {
+	return ls.Renewed.Add(ls.Duration)
 }
 
-// Decayed returns true if the lease will be expired and have exceeded the
-// duration of its decay at the given time.
+// Expired returns true if the lease will be expired at the given time.
+func (ls *Lease) Expired(at time.Time) bool {
+	return at.After(ls.ExpirationTime())
+}
+
+// DecayTime returns the time at which the lease decays.
+func (ls *Lease) DecayTime() time.Time {
+	var release time.Time
+	if !ls.Released.IsZero() {
+		release = ls.Released
+	} else {
+		release = ls.ExpirationTime()
+	}
+	return release.Add(ls.Decay)
+}
+
+// Decayed returns true if the lease will be fully decayed at the given time.
 func (ls *Lease) Decayed(at time.Time) bool {
-	decay := ls.Renewed.Add(ls.Duration).Add(ls.Decay)
-	return at.After(decay)
+	return at.After(ls.DecayTime())
 }
 
 // Clone returns a deep copy of the lease.
