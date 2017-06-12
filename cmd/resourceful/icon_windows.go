@@ -7,7 +7,7 @@ import (
 	"github.com/scjalliance/resourceful/lease/leaseui"
 )
 
-func progamIcon() *leaseui.Icon {
+func programIcon() *leaseui.Icon {
 	icon, err := walk.NewIconFromResourceId(5)
 	if err != nil {
 		return leaseui.DefaultIcon()

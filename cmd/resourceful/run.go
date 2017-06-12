@@ -18,7 +18,7 @@ func run(args []string) {
 	}
 	program := args[0]
 	args = args[1:]
-	icon := progamIcon()
+	icon := programIcon()
 	err := runner.RunWithIcon(program, args, icon)
 	if err != nil {
 		runError(err)

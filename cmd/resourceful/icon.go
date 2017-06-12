@@ -4,6 +4,6 @@ package main
 
 import "github.com/scjalliance/resourceful/lease/leaseui"
 
-func progamIcon() *leaseui.Icon {
+func programIcon() *leaseui.Icon {
 	return leaseui.DefaultIcon()
 }
