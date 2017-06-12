@@ -4,13 +4,13 @@
 		"FileVersion": {
 			"Major": 2017,
 			"Minor": 6,
-			"Patch": 10,
+			"Patch": 12,
 			"Build": 1
 		},
 		"ProductVersion": {
 			"Major": 2017,
 			"Minor": 6,
-			"Patch": 10,
+			"Patch": 12,
 			"Build": 1
 		},
 		"FileFlagsMask": "3f",
@@ -24,14 +24,14 @@
 		"Comments": "",
 		"CompanyName": "SCJ Alliance",
 		"FileDescription": "Resourceful",
-		"FileVersion": "2017.6.10.1",
+		"FileVersion": "2017.6.12.1",
 		"InternalName": "",
 		"LegalCopyright": "",
 		"LegalTrademarks": "",
 		"OriginalFilename": "resourceful.exe",
 		"PrivateBuild": "",
 		"ProductName": "Resourceful",
-		"ProductVersion": "2017.6.10.1",
+		"ProductVersion": "2017.6.12.1",
 		"SpecialBuild": ""
 	},
 	"VarFileInfo":

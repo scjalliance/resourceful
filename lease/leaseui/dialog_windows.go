@@ -1,3 +1,5 @@
+// +build windows
+
 package leaseui
 
 import (
@@ -123,4 +125,16 @@ func (dlg *Dialog) RunWithSync(ctx context.Context, responses <-chan guardian.Ac
 // Result should be called after the dialog has been closed.
 func (dlg *Dialog) Result() int {
 	return dlg.form.Result()
+}
+
+// Cancelled returns true if the dialog was cancelled by the user.
+//
+// Cancelled should be called after the dialog has been closed.
+func (dlg *Dialog) Cancelled() bool {
+	switch dlg.Result() {
+	case walk.DlgCmdAbort, walk.DlgCmdNone:
+		return true
+	default:
+		return false
+	}
 }

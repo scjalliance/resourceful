@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lxn/walk"
 	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
@@ -126,33 +125,11 @@ func (r *Runner) handleQueued(ctx context.Context, response guardian.Acquisition
 
 	log.Printf("Lease queued")
 
-	// Create a view model that will be consumed by the queued lease dialog.
-	// Prime it with the most recent response that was received.
-	model := leaseui.NewModel(r.icon, r.program, r.consumer, response)
-
-	// Create the queued lease dialog.
-	dlg, err := leaseui.New(model)
-	if err != nil {
-		return fmt.Errorf("unable to create lease status user interface: %v", err)
-	}
-
-	// Run the dialog while syncing the view model with responses that are
-	// coming in on ch.
-	switch dlg.RunWithSync(ctx, ch) {
-	case walk.DlgCmdAbort, walk.DlgCmdNone:
+	acquired, err := leaseui.WaitForActive(ctx, r.icon, r.program, r.consumer, response, ch)
+	if err != nil || !acquired {
+		// The user intentionally stopped waiting or something went wrong
 		shutdown()
-		return nil
-	}
-
-	// Process the last response that was fed into the model
-	response = model.Response()
-	if response.Err != nil {
-		return response.Err
-	}
-	if response.Lease.Status != lease.Active {
-		// The user intentionally closed the dialog
-		shutdown()
-		return nil
+		return
 	}
 
 	return r.execute(ctx, shutdown)

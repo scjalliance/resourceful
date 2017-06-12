@@ -2,6 +2,6 @@
 
 package main
 
-func prepareConsole() {}
+func prepareConsole(attach bool) {}
 
 func freeConsole() (err error) { return nil }
