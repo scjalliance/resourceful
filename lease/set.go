@@ -1,5 +1,7 @@
 package lease
 
+import "time"
+
 // Set is a set of leases.
 type Set []Lease
 
@@ -71,6 +73,36 @@ func (s Set) Stats() (active, released, pending uint) {
 			released++
 		case Queued:
 			pending++
+		}
+	}
+	return
+}
+
+// ExpirationTime returns the earliest time at which a member of the set will
+// expire.
+func (s Set) ExpirationTime() (expiration time.Time) {
+	if len(s) == 0 {
+		return
+	}
+	expiration = s[0].ExpirationTime()
+	for i := 1; i < len(s); i++ {
+		if e := s[i].ExpirationTime(); e.Before(expiration) {
+			expiration = e
+		}
+	}
+	return
+}
+
+// DecayTime returns the earliest time at which a member of the set will
+// decay.
+func (s Set) DecayTime() (decay time.Time) {
+	if len(s) == 0 {
+		return
+	}
+	decay = s[0].DecayTime()
+	for i := 1; i < len(s); i++ {
+		if d := s[i].DecayTime(); d.Before(decay) {
+			decay = d
 		}
 	}
 	return

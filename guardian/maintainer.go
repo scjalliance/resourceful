@@ -102,26 +102,37 @@ func (lm *LeaseMaintainer) run(ctx context.Context, client *Client) {
 			return
 		case <-timer.C:
 			response, err := lm.acquire()
-			d := lm.retry
+			duration := lm.retry
 			if err == nil {
 				switch response.Lease.Status {
 				case lease.Active:
 					h := response.Lease.Duration / 2
-					if h > d {
-						d = h
+					if h > duration {
+						duration = h
 					}
 				case lease.Queued:
 					// TODO: Decide whether we should just use lm.retry or if we should
 					//       use whatever the server provided for a renewal rate for
 					//       the queued lease.
+					dt := response.Leases.DecayTime()
+					now := time.Now()
+					var decay time.Duration
+					if dt.After(now) {
+						decay = dt.Sub(now)
+					} else {
+						decay = time.Second
+					}
+					if decay < duration {
+						duration = decay
+					}
 				}
 			}
-			if d < time.Second {
+			if duration < time.Second {
 				// Under no circumstances should we hammer the server faster than
 				// once per second
-				d = time.Second
+				duration = time.Second
 			}
-			timer.Reset(d)
+			timer.Reset(duration)
 		}
 	}
 }
