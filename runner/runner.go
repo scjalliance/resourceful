@@ -27,6 +27,7 @@ type Runner struct {
 	icon     *leaseui.Icon
 	client   *guardian.Client
 	running  bool
+	current  lease.Lease
 }
 
 // New creates a new runner for the given program and arguments.
@@ -76,16 +77,19 @@ func (r *Runner) Run() (err error) {
 			return nil
 		}
 
-		switch {
-		case response.Err != nil:
-			err = response.Err
-			// FIXME: Handle renewal errors when the app is already running
-		case response.Lease.Status == lease.Active:
-			err = r.handleActive(ctx, shutdown)
-		case response.Lease.Status == lease.Queued:
-			err = r.handleQueued(ctx, response, ch, shutdown)
-		default:
-			err = fmt.Errorf("unexpected lease status: \"%s\"", response.Lease.Status)
+		if response.Err != nil {
+			err = r.handleError(response.Err, shutdown)
+		} else {
+			r.current = response.Lease
+
+			switch response.Lease.Status {
+			case lease.Active:
+				err = r.handleActive(ctx, shutdown)
+			case lease.Queued:
+				err = r.handleQueued(ctx, response, ch, shutdown)
+			default:
+				err = fmt.Errorf("unexpected lease status: \"%s\"", response.Lease.Status)
+			}
 		}
 
 		if err != nil {
@@ -94,14 +98,29 @@ func (r *Runner) Run() (err error) {
 	}
 }
 
-/*
 // handleError processes lease retrieval errors.
-func (r *Runner) handleError(err error) {
-	if r.running {
-		// FIXME: Examine the response and handle renewal errors that occur
+func (r *Runner) handleError(err error, shutdown context.CancelFunc) error {
+	if !r.running {
+		return err
 	}
+
+	if r.current.Status != lease.Active {
+		panic("unexpected lease state when program is running")
+	}
+
+	log.Printf("Unable to renew active lease due to error: %v", err)
+
+	now := time.Now()
+	if r.current.Decayed(now) {
+		log.Printf("Lease has decayed. Shutting down %s", r.program)
+		shutdown()
+	} else {
+		remaining := r.current.DecayTime().Sub(now)
+		log.Printf("Lease time remaining: %v", remaining)
+	}
+
+	return nil
 }
-*/
 
 // handleActive processes active lease acquisitions.
 func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc) (err error) {
