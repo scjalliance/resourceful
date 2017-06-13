@@ -41,27 +41,41 @@ func New(resource string, strat strategy.Strategy, limit uint, duration time.Dur
 
 // MarshalJSON will encode the policy as JSON.
 func (p *Policy) MarshalJSON() ([]byte, error) {
-	type jsonPolicy Policy
+	type pol Policy
+	type refresh struct {
+		Active string `json:"active,omitempty"`
+		Queued string `json:"queued,omitempty"`
+	}
 	return json.Marshal(&struct {
-		*jsonPolicy
-		Duration string `json:"duration"`
-		Decay    string `json:"decay"`
+		*pol
+		Duration string  `json:"duration"`
+		Decay    string  `json:"decay"`
+		Refresh  refresh `json:"refresh,omitempty"`
 	}{
-		jsonPolicy: (*jsonPolicy)(p),
-		Duration:   p.Duration.String(),
-		Decay:      p.Decay.String(),
+		pol:      (*pol)(p),
+		Duration: p.Duration.String(),
+		Decay:    p.Decay.String(),
+		Refresh: refresh{
+			Active: p.Refresh.Active.String(),
+			Queued: p.Refresh.Queued.String(),
+		},
 	})
 }
 
 // UnmarshalJSON will decode JSON policy data.
 func (p *Policy) UnmarshalJSON(data []byte) error {
-	type jsonPolicy Policy
+	type pol Policy
+	type refresh struct {
+		Active string `json:"active,omitempty"`
+		Queued string `json:"queued,omitempty"`
+	}
 	aux := &struct {
-		*jsonPolicy
-		Duration string `json:"duration"`
-		Decay    string `json:"decay"`
+		*pol
+		Duration string  `json:"duration"`
+		Decay    string  `json:"decay"`
+		Refresh  refresh `json:"refresh,omitempty"`
 	}{
-		jsonPolicy: (*jsonPolicy)(p),
+		pol: (*pol)(p),
 	}
 	var err error
 	if err = json.Unmarshal(data, aux); err != nil {
@@ -74,6 +88,16 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 	}
 	if aux.Decay != "" {
 		if p.Decay, err = time.ParseDuration(aux.Decay); err != nil {
+			return err
+		}
+	}
+	if aux.Refresh.Active != "" {
+		if p.Refresh.Active, err = time.ParseDuration(aux.Refresh.Active); err != nil {
+			return err
+		}
+	}
+	if aux.Refresh.Queued != "" {
+		if p.Refresh.Queued, err = time.ParseDuration(aux.Refresh.Queued); err != nil {
 			return err
 		}
 	}
