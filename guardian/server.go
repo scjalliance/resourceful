@@ -49,11 +49,10 @@ func Run(ctx context.Context, cfg ServerConfig) (err error) {
 		Handler:        mux,
 	}
 
-	//mux.Handle("/", indexHandler(m))
 	mux.Handle("/health", healthHandler(cfg))
+	mux.Handle("/leases", leasesHandler(cfg))
 	mux.Handle("/acquire", acquireHandler(cfg))
 	mux.Handle("/release", releaseHandler(cfg))
-	//mux.Handle("/js/", http.FileServer(cfg.Assets))
 
 	result := make(chan error)
 
@@ -88,12 +87,44 @@ func healthHandler(cfg ServerConfig) http.Handler {
 	})
 }
 
+// leasesHandler will return the set of leases for a particular resource.
+func leasesHandler(cfg ServerConfig) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req, err := parseRequest(r)
+		if err != nil {
+			err = fmt.Errorf("unable to parse request: %v", err)
+			log.Printf("Bad leases request: %v\n", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		revision, leases, err := cfg.LeaseProvider.LeaseView(req.Resource)
+		if err != nil {
+			log.Printf("Lease retrieval failed: %v\n", err)
+		}
+		now := time.Now()
+		tx := lease.NewTx(req.Resource, revision, leases)
+		leaseutil.Refresh(tx, now)
+
+		response := transport.LeasesResponse{
+			Request: req,
+			Leases:  tx.Leases(),
+		}
+		data, err := json.Marshal(response)
+		if err != nil {
+			http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
+			return
+		}
+		fmt.Fprintf(w, string(data))
+	})
+}
+
 // acquireHandler will attempt to acquire a lease for the specified resource.
 func acquireHandler(cfg ServerConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req, pol, err := initRequest(cfg, r)
 		if err != nil {
-			log.Printf("Failed request: %v\n", err)
+			log.Printf("Bad acquire request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -214,7 +245,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req, pol, err := initRequest(cfg, r)
 		if err != nil {
-			log.Printf("Bad request: %v\n", err)
+			log.Printf("Bad release request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

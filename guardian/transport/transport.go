@@ -6,17 +6,23 @@ import (
 	"github.com/scjalliance/resourceful/lease"
 )
 
-// HealthResponse reports the health of a guardian server.
-type HealthResponse struct {
-	OK bool `json:"ok"`
-}
-
 // Request represents a request from a resourceful client.
 type Request struct {
 	Resource    string                  `json:"resource,omitempty"`
 	Consumer    string                  `json:"consumer,omitempty"`
 	Instance    string                  `json:"instance,omitempty"`
 	Environment environment.Environment `json:"environment,omitempty"`
+}
+
+// HealthResponse reports the health of a guardian server.
+type HealthResponse struct {
+	OK bool `json:"ok"`
+}
+
+// LeasesResponse reports the current sef of leases for a resource.
+type LeasesResponse struct {
+	Request
+	Leases lease.Set `json:"leases"`
 }
 
 // AcquireResponse reports the result of a resource acquisition attempt.
