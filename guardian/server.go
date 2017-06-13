@@ -110,7 +110,7 @@ func leasesHandler(cfg ServerConfig) http.Handler {
 			Request: req,
 			Leases:  tx.Leases(),
 		}
-		data, err := json.Marshal(response)
+		data, err := json.MarshalIndent(response, "", "\t")
 		if err != nil {
 			http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
 			return
