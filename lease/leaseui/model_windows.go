@@ -9,6 +9,8 @@ import (
 	"github.com/lxn/walk"
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
+	"github.com/scjalliance/resourceful/policy"
+	"github.com/scjalliance/resourceful/strategy"
 )
 
 // Model is a view model for the queued lease dialog.
@@ -50,8 +52,13 @@ func (m *Model) Title() string {
 
 // Description returns the description for the view.
 func (m *Model) Description() string {
-	active, released, _ := m.response.Leases.Stats()
-	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", m.ResourceName(), active+released, m.response.Lease.Limit)
+	strat := m.response.Lease.Strategy
+	if !strategy.Valid(strat) || strat == strategy.Empty {
+		strat = policy.DefaultStrategy
+	}
+	stats := m.response.Leases.Stats()
+	consumed := stats.Consumed(strat)
+	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", m.ResourceName(), consumed, m.response.Lease.Limit)
 }
 
 // TableCaption returns the caption for the view's data.

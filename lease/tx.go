@@ -139,7 +139,7 @@ func (tx *Tx) Delete(consumer, instance string) error {
 }
 
 // Stats returns the number of leases with each status.
-func (tx *Tx) Stats() (active, released, pending uint) {
+func (tx *Tx) Stats() Stats {
 	return tx.leases.Stats()
 }
 

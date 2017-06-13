@@ -15,6 +15,7 @@ import (
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/lease/leaseutil"
 	"github.com/scjalliance/resourceful/policy"
+	"github.com/scjalliance/resourceful/strategy"
 )
 
 // ServerConfig is the configuration for a resourceful guardian server.
@@ -133,6 +134,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 
 		log.Printf("%s: Lease acquisition requested\n", prefix)
 
+		strat := pol.Strategy()
 		limit := pol.Limit()
 		duration := pol.Duration()
 		decay := pol.Decay()
@@ -156,6 +158,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				Instance:    req.Instance,
 				Environment: req.Environment,
 				Renewed:     now,
+				Strategy:    strat,
 				Limit:       limit,
 				Duration:    duration,
 				Decay:       decay,
@@ -173,12 +176,13 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				ls.Started = existing.Started
 				tx.Update(existing.Consumer, existing.Instance, ls)
 			} else {
-				active, released, _ := tx.Stats()
+				stats := tx.Stats()
+				consumed := stats.Consumed(strat)
 				replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
 
 				ls.Started = now
 
-				if l := len(replaceable); l > 0 && active+released <= limit {
+				if l := len(replaceable); l > 0 && consumed <= limit {
 					// Lease replacement (for an expired or released lease previously
 					// issued to the the same consumer, that's in a decaying state)
 					replaced := replaceable[l-1]
@@ -186,7 +190,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 					tx.Update(replaced.Consumer, replaced.Instance, ls)
 				} else {
 					// New lease
-					if active+released < limit {
+					if consumed < limit {
 						ls.Status = lease.Active
 					} else {
 						ls.Status = lease.Queued
@@ -212,9 +216,8 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 			return
 		}
 
-		active, released, queued := leases.Stats()
-		stats := fmt.Sprintf("alloc: %d/%d active: %d, released: %d, queued: %d", active+released, limit, active, released, queued)
-		log.Printf("%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, stats)
+		summary := statsSummary(limit, leases.Stats(), strat)
+		log.Printf("%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
 
 		response := transport.AcquireResponse{
 			Request: req,
@@ -254,6 +257,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 
 		log.Printf("%s: Release requested\n", prefix)
 
+		strat := pol.Strategy()
 		limit := pol.Limit()
 
 		var leases lease.Set
@@ -291,16 +295,15 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 			return
 		}
 
-		active, released, queued := leases.Stats()
-		stats := fmt.Sprintf("alloc: %d/%d active: %d, released: %d, queued: %d", active+released, limit, active, released, queued)
+		summary := statsSummary(limit, leases.Stats(), strat)
 		if found {
 			if ls.Status == lease.Released {
-				log.Printf("%s: Release ignored because the lease had already been released (%s)\n", prefix, stats)
+				log.Printf("%s: Release ignored because the lease had already been released (%s)\n", prefix, summary)
 			} else {
-				log.Printf("%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, stats)
+				log.Printf("%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, summary)
 			}
 		} else {
-			log.Printf("%s: Release ignored because the lease could not be found (%s)\n", prefix, stats)
+			log.Printf("%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
 		}
 
 		response := transport.ReleaseResponse{
@@ -381,4 +384,12 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 		}
 	}
 	return
+}
+
+func statsSummary(limit uint, stats lease.Stats, strat strategy.Strategy) string {
+	consumed := stats.Consumed(strat)
+	active := stats.Active(strat)
+	released := stats.Released(strat)
+	queued := stats.Queued(strat)
+	return fmt.Sprintf("alloc: %d/%d active: %d, released: %d, queued: %d", consumed, limit, active, released, queued)
 }

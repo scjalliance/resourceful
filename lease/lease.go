@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
+	"github.com/scjalliance/resourceful/strategy"
 )
 
 // Lease describes a single assignment of a leased resource.
@@ -16,6 +17,7 @@ type Lease struct {
 	Started     time.Time               `json:"started,omitempty"`
 	Renewed     time.Time               `json:"renewed,omitempty"`
 	Released    time.Time               `json:"released,omitempty"`
+	Strategy    strategy.Strategy       `json:"strategy,omitempty"`
 	Limit       uint                    `json:"limit"`
 	Duration    time.Duration           `json:"duration"`
 	Decay       time.Duration           `json:"decay"`
@@ -73,6 +75,7 @@ func Clone(from Lease) (to Lease) {
 	to.Started = from.Started
 	to.Renewed = from.Renewed
 	to.Released = from.Released
+	to.Strategy = from.Strategy
 	to.Limit = from.Limit
 	to.Duration = from.Duration
 	to.Decay = from.Decay

@@ -63,16 +63,26 @@ func (s Set) Status(status Status) (matched Set) {
 	return
 }
 
-// Stats returns the number of leases with each status.
-func (s Set) Stats() (active, released, pending uint) {
+// Stats returns the resource consumption statistics for each resource
+// counting strategy.
+//
+// The set must be sorted prior to calling this function.
+func (s Set) Stats() (stats Stats) {
+	consumers := make(map[string]struct{}, len(s)) // Consumers that have already been seen
+
 	for _, ls := range s {
-		switch ls.Status {
-		case Active:
-			active++
-		case Released:
-			released++
-		case Queued:
-			pending++
+		// The instance strategy is a simple tally of each kind of lease.
+		stats.Instance.Add(ls.Status)
+
+		// The consumer strategy is more complicated; it requires that we only count
+		// each consumer once, despite how many instances the consumer may have.
+		//
+		// Leases are processed in sorted order, which means the active lease will
+		// be processed first. Consumers with both active and released leases will
+		// only count as active.
+		if _, seen := consumers[ls.Consumer]; !seen {
+			consumers[ls.Consumer] = struct{}{}
+			stats.Consumer.Add(ls.Status)
 		}
 	}
 	return
