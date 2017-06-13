@@ -253,7 +253,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 			return
 		}
 
-		prefix := fmt.Sprintf("%s - %s", req.Resource, req.Consumer)
+		prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
 
 		log.Printf("%s: Release requested\n", prefix)
 
@@ -391,5 +391,5 @@ func statsSummary(limit uint, stats lease.Stats, strat strategy.Strategy) string
 	active := stats.Active(strat)
 	released := stats.Released(strat)
 	queued := stats.Queued(strat)
-	return fmt.Sprintf("alloc: %d/%d active: %d, released: %d, queued: %d", consumed, limit, active, released, queued)
+	return fmt.Sprintf("alloc: %d/%d, active: %d, released: %d, queued: %d", consumed, limit, active, released, queued)
 }
