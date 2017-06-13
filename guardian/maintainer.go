@@ -91,6 +91,11 @@ func (lm *LeaseMaintainer) Listen(bufferSize int) (ch <-chan Acquisition) {
 func (lm *LeaseMaintainer) run(ctx context.Context, client *Client) {
 	defer lm.close()
 
+	var (
+		acquired bool
+		current  transport.AcquireResponse
+	)
+
 	timer := time.NewTimer(0)
 	for {
 		select {
@@ -102,37 +107,14 @@ func (lm *LeaseMaintainer) run(ctx context.Context, client *Client) {
 			return
 		case <-timer.C:
 			response, err := lm.acquire()
-			duration := lm.retry
+			var online bool
 			if err == nil {
-				switch response.Lease.Status {
-				case lease.Active:
-					h := response.Lease.Duration / 2
-					if h > duration {
-						duration = h
-					}
-				case lease.Queued:
-					// TODO: Decide whether we should just use lm.retry or if we should
-					//       use whatever the server provided for a renewal rate for
-					//       the queued lease.
-					dt := response.Leases.DecayTime()
-					now := time.Now()
-					var decay time.Duration
-					if dt.After(now) {
-						decay = dt.Sub(now)
-					} else {
-						decay = time.Second
-					}
-					if decay < duration {
-						duration = decay
-					}
-				}
+				acquired = true
+				online = true
+				current = response
 			}
-			if duration < time.Second {
-				// Under no circumstances should we hammer the server faster than
-				// once per second
-				duration = time.Second
-			}
-			timer.Reset(duration)
+			interval := lm.interval(acquired, online, current)
+			timer.Reset(interval)
 		}
 	}
 }
@@ -187,4 +169,52 @@ func (lm *LeaseMaintainer) close() {
 
 	lm.listeners = nil
 	lm.closed = true
+}
+
+// interval computes the interval until the next lease acquisition.
+//
+// acquired indicates whether we have acquired a lease.
+// online indicates indicates whether the server is currently online.
+// current is the most recent response without an error.
+func (lm *LeaseMaintainer) interval(acquired bool, online bool, current transport.AcquireResponse) (interval time.Duration) {
+	defer func() {
+		if interval < lease.MinimumRefresh {
+			interval = lease.MinimumRefresh
+		}
+	}()
+
+	// If we haven't received a valid response yet use the retry interval
+	if !acquired {
+		return lm.retry
+	}
+
+	// We have a lease
+	interval = current.Lease.EffectiveRefresh()
+
+	// If the server went offline after we retreived a valid lease, use the
+	// effective refresh interval or our retry interval, whichever is
+	// less.
+	if !online {
+		if lm.retry < interval {
+			return lm.retry
+		}
+		return interval
+	}
+
+	// If our lease is queued, take into consideration when the next
+	// lease decays
+	if current.Lease.Status == lease.Queued {
+		decay := current.Leases.DecayDuration(time.Now())
+		if decay > 0 && decay < interval {
+			interval = decay
+		}
+	}
+
+	if interval < lease.MinimumRefresh {
+		// Under no circumstances should we hammer the server faster than
+		// the minimum refresh interval.
+		interval = lease.MinimumRefresh
+	}
+
+	return interval
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
+	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/strategy"
 )
 
@@ -23,6 +24,7 @@ type Policy struct {
 	Limit       uint                    `json:"limit,omitempty"`
 	Duration    time.Duration           `json:"duration,omitempty"` // Time before a leased resource is automatically released
 	Decay       time.Duration           `json:"decay,omitempty"`    // Time before a released resource is considered available again
+	Refresh     lease.Refresh           `json:"refresh,omitempty"`  // Time between lease acquisitions while maintaining a lease
 }
 
 // New returns a new policy for a particular resource with the given limit,

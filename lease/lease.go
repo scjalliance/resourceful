@@ -21,6 +21,7 @@ type Lease struct {
 	Limit       uint                    `json:"limit"`
 	Duration    time.Duration           `json:"duration"`
 	Decay       time.Duration           `json:"decay"`
+	Refresh     Refresh                 `json:"refresh,omitempty"`
 }
 
 // MatchConsumer returns true if the lease is for the given resource and consumer.
@@ -63,6 +64,33 @@ func (ls *Lease) DecayTime() time.Time {
 // Decayed returns true if the lease will be fully decayed at the given time.
 func (ls *Lease) Decayed(at time.Time) bool {
 	return at.After(ls.DecayTime())
+}
+
+// EffectiveRefresh returns the effective refresh interval for the lease.
+//
+// If the lease refresh interval is non-zero, it will be returned. If the
+// refresh interval is zero a computed interval of half the lease duration will
+// will be returned instead.
+//
+// The returned value will always be greater than or equal to the minimum
+// refresh rate defined by MinimumRefresh.
+func (ls *Lease) EffectiveRefresh() (interval time.Duration) {
+	switch ls.Status {
+	case Active:
+		interval = ls.Refresh.Active
+	case Queued:
+		interval = ls.Refresh.Queued
+	}
+
+	if interval == 0 {
+		interval = ls.Duration / 2
+	}
+
+	if interval < MinimumRefresh {
+		interval = MinimumRefresh
+	}
+
+	return interval
 }
 
 // Clone returns a deep copy of the lease.

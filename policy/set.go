@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
+	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/strategy"
 )
 
@@ -83,6 +84,29 @@ func (s Set) Decay() (decay time.Duration) {
 	for i := 1; i < len(s); i++ {
 		if s[i].Decay > decay {
 			decay = s[i].Decay
+		}
+	}
+	return
+}
+
+// Refresh returns the lease refresh intervals for the policy set, which are the
+// first non-zero intervals within the set.
+//
+// If the set is empty, a zero value is returned.
+func (s Set) Refresh() (refresh lease.Refresh) {
+	if len(s) == 0 {
+		return
+	}
+
+	for i := 0; i < len(s); i++ {
+		if refresh.Active == 0 && s[i].Refresh.Active != 0 {
+			refresh.Active = s[i].Refresh.Active
+		}
+		if refresh.Queued == 0 && s[i].Refresh.Queued != 0 {
+			refresh.Queued = s[i].Refresh.Queued
+		}
+		if refresh.Active != 0 && refresh.Queued != 0 {
+			break
 		}
 	}
 	return

@@ -138,6 +138,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 		limit := pol.Limit()
 		duration := pol.Duration()
 		decay := pol.Decay()
+		refresh := pol.Refresh()
 
 		var leases lease.Set
 		var ls lease.Lease
@@ -162,6 +163,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				Limit:       limit,
 				Duration:    duration,
 				Decay:       decay,
+				Refresh:     refresh,
 			}
 
 			tx := lease.NewTx(req.Resource, revision, leases)

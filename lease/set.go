@@ -118,6 +118,18 @@ func (s Set) DecayTime() (decay time.Time) {
 	return
 }
 
+// DecayDuration returns the interval between the given time and the earliest
+// time at which a member of the set will decay.
+//
+// If the decay time is before the given time a zero duration will be returned.
+func (s Set) DecayDuration(at time.Time) (duration time.Duration) {
+	dt := s.DecayTime()
+	if dt.After(at) {
+		duration = dt.Sub(at)
+	}
+	return
+}
+
 // Len is the number of leases in the collection.
 func (s Set) Len() int {
 	return len(s)
