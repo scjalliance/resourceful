@@ -12,8 +12,8 @@ const (
 	// allocation counts.
 	Active Status = "active"
 
-	// Released indicates that a lease has ended and is in a state of decay,
-	// during which it still is included in the resource allocation counts.
+	// Released indicates that a lease has ended but is in a state of decay.
+	// Decaying leases are still included in resource allocation counts.
 	Released Status = "released"
 )
 
