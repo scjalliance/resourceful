@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/scjalliance/resourceful/policy"
+	"github.com/scjalliance/resourceful/strategy"
 )
 
 // Provider is a filesystem-based source of policy data. The policies are read
@@ -54,6 +55,11 @@ func (p *Provider) Policies() (policies policy.Set, err error) {
 		dataErr := json.Unmarshal(contents, &pol)
 		if dataErr != nil {
 			err = fmt.Errorf("decoding error while parsing policy file \"%s\": %v", file.Name(), dataErr)
+			return
+		}
+
+		if !strategy.Valid(pol.Strategy) {
+			err = fmt.Errorf("invalid policy strategy in \"%s\": \"%s\"", file.Name(), pol.Strategy)
 			return
 		}
 

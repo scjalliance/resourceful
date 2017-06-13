@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
+	"github.com/scjalliance/resourceful/strategy"
 )
 
 // Set is a set of policies.
@@ -17,6 +18,20 @@ func (s Set) Match(resource, consumer string, env environment.Environment) (matc
 		}
 	}
 	return
+}
+
+// Strategy returns the resource counting strategy for the policy set. The
+// first non-empty strategy in the set will be returned. If the set does not
+// define a non-empty strategy, DefaultStrategy will be returned.
+func (s Set) Strategy() strategy.Strategy {
+	for p := range s {
+		switch s[p].Strategy {
+		case strategy.Empty:
+		default:
+			return s[p].Strategy
+		}
+	}
+	return DefaultStrategy
 }
 
 // Limit returns the lease limit for the policy set, which is the

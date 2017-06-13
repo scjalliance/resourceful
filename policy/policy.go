@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
+	"github.com/scjalliance/resourceful/strategy"
 )
 
 // TODO: Use https://github.com/valyala/fasttemplate for consumer construction
@@ -18,6 +19,7 @@ type Policy struct {
 	Consumer    string                  `json:"consumer,omitempty"`    // Overrides client-supplied consumer
 	Environment environment.Environment `json:"environment,omitempty"` // Overrides client-supplied environment
 	Criteria    Criteria                `json:"criteria,omitempty"`
+	Strategy    strategy.Strategy       `json:"strategy,omitempty"`
 	Limit       uint                    `json:"limit,omitempty"`
 	Duration    time.Duration           `json:"duration,omitempty"` // Time before a leased resource is automatically released
 	Decay       time.Duration           `json:"decay,omitempty"`    // Time before a released resource is considered available again
@@ -25,10 +27,11 @@ type Policy struct {
 
 // New returns a new policy for a particular resource with the given limit,
 // duration and criteria.
-func New(resource string, limit uint, duration time.Duration, criteria Criteria) Policy {
+func New(resource string, strat strategy.Strategy, limit uint, duration time.Duration, criteria Criteria) Policy {
 	return Policy{
 		Resource: resource,
 		Criteria: criteria,
+		Strategy: strat,
 		Limit:    limit,
 		Duration: duration,
 	}

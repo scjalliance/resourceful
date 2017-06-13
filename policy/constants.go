@@ -1,6 +1,10 @@
 package policy
 
-import "time"
+import (
+	"time"
+
+	"github.com/scjalliance/resourceful/strategy"
+)
 
 // TODO: Consider changing these into integer-based enumerations with a custom
 //       JSON codec.
@@ -24,4 +28,6 @@ const (
 	DefaultLimit = ^uint(0)
 	// DefaultDuration is the duration returned for empty policy sets.
 	DefaultDuration = time.Minute * 15
+	// DefaultStrategy is the default resource counting strategy.
+	DefaultStrategy = strategy.Instance
 )
