@@ -166,6 +166,19 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				Refresh:     refresh,
 			}
 
+			if ls.Refresh.Active != 0 {
+				if ls.Duration <= ls.Refresh.Active {
+					log.Printf("%s: The lease policy specified an active refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Active.String(), ls.Duration.String())
+					ls.Refresh.Active = 0 // Use the default refresh rate instead of nonsense
+				}
+			}
+			if ls.Refresh.Queued != 0 {
+				if ls.Duration <= ls.Refresh.Queued {
+					log.Printf("%s: The lease policy specified a queued refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Queued.String(), ls.Duration.String())
+					ls.Refresh.Queued = 0 // Use the default refresh rate instead of nonsense
+				}
+			}
+
 			tx := lease.NewTx(req.Resource, revision, leases)
 
 			acc := leaseutil.Refresh(tx, now)
