@@ -168,7 +168,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 
 			tx := lease.NewTx(req.Resource, revision, leases)
 
-			leaseutil.Refresh(tx, now)
+			acc := leaseutil.Refresh(tx, now)
 
 			existing, found := tx.Instance(req.Consumer, req.Instance)
 			if found {
@@ -178,21 +178,24 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				ls.Started = existing.Started
 				tx.Update(existing.Consumer, existing.Instance, ls)
 			} else {
-				stats := tx.Stats()
-				consumed := stats.Consumed(strat)
-				replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
+				consumed := acc.Consumed(strat)
+				released := acc.Released(req.Consumer)
 
 				ls.Started = now
 
-				if l := len(replaceable); l > 0 && consumed <= limit {
+				if released > 0 && consumed <= limit {
 					// Lease replacement (for an expired or released lease previously
 					// issued to the the same consumer, that's in a decaying state)
-					replaced := replaceable[l-1]
+					replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
+					if uint(len(replaceable)) != released {
+						panic("server: acquireHandler: accumulator returned a different count for relased leases than the transaction")
+					}
+					replaced := replaceable[released-1]
 					ls.Status = lease.Active
 					tx.Update(replaced.Consumer, replaced.Instance, ls)
 				} else {
 					// New lease
-					if consumed < limit {
+					if leaseutil.CanActivate(strat, acc.Active(req.Consumer), consumed, limit) {
 						ls.Status = lease.Active
 					} else {
 						ls.Status = lease.Queued
