@@ -28,3 +28,8 @@ _testmain.go
 
 # Policy files
 *.pol
+
+# Bolt database files
+*.bolt
+*.boltdb
+*.lock
