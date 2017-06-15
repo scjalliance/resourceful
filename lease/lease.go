@@ -107,5 +107,6 @@ func Clone(from Lease) (to Lease) {
 	to.Limit = from.Limit
 	to.Duration = from.Duration
 	to.Decay = from.Decay
+	to.Refresh = from.Refresh
 	return
 }
