@@ -11,16 +11,16 @@ import (
 	ui "github.com/lxn/walk/declarative"
 )
 
-// Dialog is a queued lease dialog.
-type Dialog struct {
+// LeaseDialog is a queued lease dialog.
+type LeaseDialog struct {
 	ui    *ui.Dialog
 	form  *walk.Dialog
-	model *Model
+	model *LeaseModel
 }
 
-// New returns a new queued lease dialog with the given view model.
-func New(model *Model) (dlg *Dialog, err error) {
-	dlg = &Dialog{
+// NewLeaseDialog returns a new queued lease dialog with the given view model.
+func NewLeaseDialog(model *LeaseModel) (dlg *LeaseDialog, err error) {
+	dlg = &LeaseDialog{
 		model: model,
 	}
 
@@ -71,31 +71,8 @@ func New(model *Model) (dlg *Dialog, err error) {
 //
 // Run returns the result of the dialog. If the context was cancelled run will
 // return walk.DlgCmdCancel.
-func (dlg *Dialog) Run(ctx context.Context) int {
-	select {
-	case <-ctx.Done():
-		return walk.DlgCmdCancel
-	default:
-	}
-
-	closed := make(chan struct{})
-	defer close(closed)
-
-	go func() {
-		select {
-		case <-closed:
-		case <-ctx.Done():
-			// Here we use the synchronize function to ensure that our call to Close
-			// pushes the WM_CLOSE message onto the message queue of the correct
-			// thread. If we call Close() directly it could fail silently and
-			// deadlock.
-			dlg.form.Synchronize(func() {
-				dlg.form.Close(walk.DlgCmdCancel)
-			})
-		}
-	}()
-
-	return dlg.form.Run()
+func (dlg *LeaseDialog) Run(ctx context.Context) int {
+	return runDialog(ctx, dlg.form)
 }
 
 // RunWithSync will display the queued lease dialog. As long as the dialog is
@@ -109,28 +86,21 @@ func (dlg *Dialog) Run(ctx context.Context) int {
 // RunWithSync returns the result of the dialog. If the context was cancelled,
 // an active lease was acquired or the channel was closed it will return
 // walk.DlgCmdCancel.
-func (dlg *Dialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) int {
-	// Keep the dialog in sync with lease responses
-	ctx, cancel := context.WithCancel(ctx)
-	go func() {
-		Sync(dlg.model, responses) // Block until acquisition or shutdown
-		cancel()
-	}()
-
-	return dlg.Run(ctx)
+func (dlg *LeaseDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) int {
+	return runDialogWithSync(ctx, dlg.form, dlg.model, responses)
 }
 
 // Result returns the result returned by the dialog.
 //
 // Result should be called after the dialog has been closed.
-func (dlg *Dialog) Result() int {
+func (dlg *LeaseDialog) Result() int {
 	return dlg.form.Result()
 }
 
 // Cancelled returns true if the dialog was cancelled by the user.
 //
 // Cancelled should be called after the dialog has been closed.
-func (dlg *Dialog) Cancelled() bool {
+func (dlg *LeaseDialog) Cancelled() bool {
 	switch dlg.Result() {
 	case walk.DlgCmdAbort, walk.DlgCmdNone:
 		return true

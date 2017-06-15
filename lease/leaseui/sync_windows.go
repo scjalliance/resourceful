@@ -13,7 +13,7 @@ import (
 // channel until an active lease is acquired or the channel is closed.
 //
 // Sync returns true if an active lease was acquired.
-func Sync(model *Model, responses <-chan guardian.Acquisition) (acquired bool) {
+func Sync(model Model, responses <-chan guardian.Acquisition) (acquired bool) {
 	sleepRound()
 
 	ticker := time.NewTicker(time.Second)
@@ -34,9 +34,7 @@ func Sync(model *Model, responses <-chan guardian.Acquisition) (acquired bool) {
 				return true
 			}
 		case <-ticker.C:
-			for r := 0; r < model.RowCount(); r++ {
-				model.PublishRowChanged(r)
-			}
+			model.Refresh()
 		}
 	}
 }
