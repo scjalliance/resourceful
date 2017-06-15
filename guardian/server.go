@@ -20,9 +20,10 @@ import (
 
 // ServerConfig is the configuration for a resourceful guardian server.
 type ServerConfig struct {
-	ListenSpec     string
-	PolicyProvider policy.Provider
-	LeaseProvider  lease.Provider
+	ListenSpec      string
+	PolicyProvider  policy.Provider
+	LeaseProvider   lease.Provider
+	ShutdownTimeout time.Duration // Time allowed to the HTTP server to perform a graceful shutdown
 }
 
 // Server coordinates locks on finite resources.
@@ -34,11 +35,11 @@ type Server struct {
 // Run will create and run a resourceful guardian server until the provided
 // context is canceled.
 func Run(ctx context.Context, cfg ServerConfig) (err error) {
-	log.Printf("Starting, HTTP on: %s\n", cfg.ListenSpec)
+	log.Printf("Starting HTTP listener on %s", cfg.ListenSpec)
 
 	listener, err := net.Listen("tcp", cfg.ListenSpec)
 	if err != nil {
-		log.Printf("Error creating listener: %v\n", err)
+		log.Printf("Error creating HTTP listener on %s: %v", cfg.ListenSpec, err)
 		return
 	}
 
@@ -64,14 +65,19 @@ func Run(ctx context.Context, cfg ServerConfig) (err error) {
 
 	select {
 	case err = <-result:
+		log.Printf("Stopped HTTP listener on %s due to error: %v", cfg.ListenSpec, err)
 		return
 	case <-ctx.Done():
 	}
 
-	shutdownCtx := context.TODO()
+	log.Printf("Stopping HTTP listener on %s due to shutdown signal", cfg.ListenSpec)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
 	server.Shutdown(shutdownCtx)
 
 	err = <-result
+
+	log.Printf("Stopped HTTP listener on %s", cfg.ListenSpec)
 	return
 }
 
