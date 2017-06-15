@@ -111,12 +111,12 @@ func (r *Runner) handleError(err error, shutdown context.CancelFunc) error {
 	log.Printf("Unable to renew active lease due to error: %v", err)
 
 	now := time.Now()
-	if r.current.Decayed(now) {
-		log.Printf("Lease has decayed. Shutting down %s", r.program)
+	if r.current.Expired(now) {
+		log.Printf("Lease has expired. Shutting down %s", r.program)
 		shutdown()
 	} else {
-		remaining := r.current.DecayTime().Sub(now)
-		log.Printf("Lease time remaining: %v", remaining)
+		remaining := r.current.ExpirationTime().Sub(now)
+		log.Printf("Lease time remaining: %s", remaining.String())
 	}
 
 	return nil
