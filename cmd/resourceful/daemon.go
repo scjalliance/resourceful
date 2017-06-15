@@ -34,6 +34,8 @@ func daemon(command string, args []string) {
 	var (
 		leaseStorage = os.Getenv("LEASE_STORE")
 		boltPath     = os.Getenv("BOLT_PATH")
+		policyPath   = os.Getenv("POLICY_PATH")
+		err          error
 	)
 
 	if leaseStorage == "" {
@@ -42,18 +44,20 @@ func daemon(command string, args []string) {
 	if boltPath == "" {
 		boltPath = defaultBoltPath
 	}
+	if policyPath == "" {
+		// Use the working directory as the default source for policy files
+		policyPath, err = os.Getwd()
+		if err != nil {
+			logger.Printf("Unable to detect working directory: %v", err)
+			os.Exit(2)
+		}
+	}
 
 	fs := flag.NewFlagSet(command, flag.ExitOnError)
 	fs.StringVar(&leaseStorage, "leasestore", leaseStorage, "lease storage type [\"bolt\", \"memory\"]")
 	fs.StringVar(&boltPath, "boltpath", boltPath, "bolt database file path")
+	fs.StringVar(&policyPath, "policypath", policyPath, "policy directory path")
 	fs.Parse(args)
-
-	// Detect the working directory, which is the source of policy files
-	wd, err := os.Getwd()
-	if err != nil {
-		logger.Printf("Unable to detect working directory: %v", err)
-		os.Exit(2)
-	}
 
 	logger.Println("Starting resourceful guardian daemon")
 
@@ -63,7 +67,7 @@ func daemon(command string, args []string) {
 		os.Exit(2)
 	}
 
-	policyProvider := cacheprov.New(fsprov.New(wd))
+	policyProvider := cacheprov.New(fsprov.New(policyPath))
 
 	cfg := guardian.ServerConfig{
 		ListenSpec:      ":5877",
@@ -75,7 +79,7 @@ func daemon(command string, args []string) {
 
 	logger.Printf("Created providers (policy: %s, lease: %s)", policyProvider.ProviderName(), leaseProvider.ProviderName())
 
-	logger.Printf("Policy source directory: %s\n", wd)
+	logger.Printf("Policy source directory: %s\n", policyPath)
 	// Verify that we're starting with a good policy set
 	policies, err := cfg.PolicyProvider.Policies()
 	if err != nil {
