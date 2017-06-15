@@ -55,21 +55,22 @@ func (p *Provider) Policies() (policies policy.Set, err error) {
 			continue
 		}
 
-		contents, fileErr := ioutil.ReadFile(file.Name())
+		path := filepath.Join(p.path, file.Name())
+		contents, fileErr := ioutil.ReadFile(path)
 		if fileErr != nil {
-			return nil, fmt.Errorf("unable to read policy file \"%s\": %v", file.Name(), fileErr)
+			return nil, fmt.Errorf("unable to read policy file \"%s\": %v", path, fileErr)
 		}
 
 		// TODO: Use json.Decoder and stream the file into it instead of slurping?
 		pol := policy.Policy{}
 		dataErr := json.Unmarshal(contents, &pol)
 		if dataErr != nil {
-			err = fmt.Errorf("decoding error while parsing policy file \"%s\": %v", file.Name(), dataErr)
+			err = fmt.Errorf("decoding error while parsing policy file \"%s\": %v", path, dataErr)
 			return
 		}
 
 		if !strategy.Valid(pol.Strategy) {
-			err = fmt.Errorf("invalid policy strategy in \"%s\": \"%s\"", file.Name(), pol.Strategy)
+			err = fmt.Errorf("invalid policy strategy in \"%s\": \"%s\"", path, pol.Strategy)
 			return
 		}
 

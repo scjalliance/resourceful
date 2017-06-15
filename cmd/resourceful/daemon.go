@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -58,6 +59,12 @@ func daemon(command string, args []string) {
 	fs.StringVar(&boltPath, "boltpath", boltPath, "bolt database file path")
 	fs.StringVar(&policyPath, "policypath", policyPath, "policy directory path")
 	fs.Parse(args)
+
+	policyPath, err = filepath.Abs(policyPath)
+	if err != nil {
+		logger.Printf("Invalid policy path directory \"%s\": %v", policyPath, err)
+		os.Exit(2)
+	}
 
 	logger.Println("Starting resourceful guardian daemon")
 
