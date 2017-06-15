@@ -24,6 +24,7 @@ type ServerConfig struct {
 	PolicyProvider  policy.Provider
 	LeaseProvider   lease.Provider
 	ShutdownTimeout time.Duration // Time allowed to the HTTP server to perform a graceful shutdown
+	Logger          *log.Logger
 }
 
 // Server coordinates locks on finite resources.
@@ -35,11 +36,11 @@ type Server struct {
 // Run will create and run a resourceful guardian server until the provided
 // context is canceled.
 func Run(ctx context.Context, cfg ServerConfig) (err error) {
-	log.Printf("Starting HTTP listener on %s", cfg.ListenSpec)
+	printf(cfg.Logger, "Starting HTTP listener on %s", cfg.ListenSpec)
 
 	listener, err := net.Listen("tcp", cfg.ListenSpec)
 	if err != nil {
-		log.Printf("Error creating HTTP listener on %s: %v", cfg.ListenSpec, err)
+		cfg.Logger.Printf("Error creating HTTP listener on %s: %v", cfg.ListenSpec, err)
 		return
 	}
 
@@ -65,19 +66,19 @@ func Run(ctx context.Context, cfg ServerConfig) (err error) {
 
 	select {
 	case err = <-result:
-		log.Printf("Stopped HTTP listener on %s due to error: %v", cfg.ListenSpec, err)
+		printf(cfg.Logger, "Stopped HTTP listener on %s due to error: %v", cfg.ListenSpec, err)
 		return
 	case <-ctx.Done():
 	}
 
-	log.Printf("Stopping HTTP listener on %s due to shutdown signal", cfg.ListenSpec)
+	printf(cfg.Logger, "Stopping HTTP listener on %s due to shutdown signal", cfg.ListenSpec)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	server.Shutdown(shutdownCtx)
 
 	err = <-result
 
-	log.Printf("Stopped HTTP listener on %s", cfg.ListenSpec)
+	printf(cfg.Logger, "Stopped HTTP listener on %s", cfg.ListenSpec)
 	return
 }
 
@@ -100,14 +101,14 @@ func leasesHandler(cfg ServerConfig) http.Handler {
 		req, err := parseRequest(r)
 		if err != nil {
 			err = fmt.Errorf("unable to parse request: %v", err)
-			log.Printf("Bad leases request: %v\n", err)
+			printf(cfg.Logger, "Bad leases request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		revision, leases, err := cfg.LeaseProvider.LeaseView(req.Resource)
 		if err != nil {
-			log.Printf("Lease retrieval failed: %v\n", err)
+			printf(cfg.Logger, "Lease retrieval failed: %v\n", err)
 		}
 		now := time.Now()
 		tx := lease.NewTx(req.Resource, revision, leases)
@@ -131,14 +132,14 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req, pol, err := initRequest(cfg, r)
 		if err != nil {
-			log.Printf("Bad acquire request: %v\n", err)
+			printf(cfg.Logger, "Bad acquire request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
 
-		log.Printf("%s: Lease acquisition requested\n", prefix)
+		printf(cfg.Logger, "%s: Lease acquisition requested\n", prefix)
 
 		strat := pol.Strategy()
 		limit := pol.Limit()
@@ -155,7 +156,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 
 			revision, leases, err = cfg.LeaseProvider.LeaseView(req.Resource)
 			if err != nil {
-				log.Printf("%s: Lease retrieval failed: %v\n", prefix, err)
+				printf(cfg.Logger, "%s: Lease retrieval failed: %v\n", prefix, err)
 			}
 			now := time.Now()
 
@@ -174,13 +175,13 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 
 			if ls.Refresh.Active != 0 {
 				if ls.Duration <= ls.Refresh.Active {
-					log.Printf("%s: The lease policy specified an active refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Active.String(), ls.Duration.String())
+					printf(cfg.Logger, "%s: The lease policy specified an active refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Active.String(), ls.Duration.String())
 					ls.Refresh.Active = 0 // Use the default refresh rate instead of nonsense
 				}
 			}
 			if ls.Refresh.Queued != 0 {
 				if ls.Duration <= ls.Refresh.Queued {
-					log.Printf("%s: The lease policy specified a queued refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Queued.String(), ls.Duration.String())
+					printf(cfg.Logger, "%s: The lease policy specified a queued refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Queued.String(), ls.Duration.String())
 					ls.Refresh.Queued = 0 // Use the default refresh rate instead of nonsense
 				}
 			}
@@ -232,7 +233,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				break
 			}
 
-			log.Printf("%s: Lease acquisition failed: %v\n", prefix, err)
+			printf(cfg.Logger, "%s: Lease acquisition failed: %v\n", prefix, err)
 		}
 
 		if err != nil {
@@ -241,7 +242,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 		}
 
 		summary := statsSummary(limit, leases.Stats(), strat)
-		log.Printf("%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
+		printf(cfg.Logger, "%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
 
 		response := transport.AcquireResponse{
 			Request: req,
@@ -257,7 +258,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 
 		data, err := json.Marshal(response)
 		if err != nil {
-			log.Printf("%s: Failed to marshal response: %v\n", prefix, err)
+			printf(cfg.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
 			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
 			return
 		}
@@ -272,14 +273,14 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req, pol, err := initRequest(cfg, r)
 		if err != nil {
-			log.Printf("Bad release request: %v\n", err)
+			printf(cfg.Logger, "Bad release request: %v\n", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
 
-		log.Printf("%s: Release requested\n", prefix)
+		printf(cfg.Logger, "%s: Release requested\n", prefix)
 
 		strat := pol.Strategy()
 		limit := pol.Limit()
@@ -292,7 +293,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 			var revision uint64
 			revision, leases, err = cfg.LeaseProvider.LeaseView(req.Resource)
 			if err != nil {
-				log.Printf("%s: Release failed: %v\n", prefix, err)
+				printf(cfg.Logger, "%s: Release failed: %v\n", prefix, err)
 				continue
 			}
 
@@ -311,7 +312,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 				break
 			}
 
-			log.Printf("%s: Release failed: %v\n", prefix, err)
+			printf(cfg.Logger, "%s: Release failed: %v\n", prefix, err)
 		}
 
 		if err != nil {
@@ -322,12 +323,12 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 		summary := statsSummary(limit, leases.Stats(), strat)
 		if found {
 			if ls.Status == lease.Released {
-				log.Printf("%s: Release ignored because the lease had already been released (%s)\n", prefix, summary)
+				printf(cfg.Logger, "%s: Release ignored because the lease had already been released (%s)\n", prefix, summary)
 			} else {
-				log.Printf("%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, summary)
+				printf(cfg.Logger, "%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, summary)
 			}
 		} else {
-			log.Printf("%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
+			printf(cfg.Logger, "%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
 		}
 
 		response := transport.ReleaseResponse{
@@ -337,7 +338,7 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 
 		data, err := json.Marshal(response)
 		if err != nil {
-			log.Printf("%s: Failed to marshal response: %v\n", prefix, err)
+			printf(cfg.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
 			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
 			return
 		}
@@ -416,4 +417,10 @@ func statsSummary(limit uint, stats lease.Stats, strat strategy.Strategy) string
 	released := stats.Released(strat)
 	queued := stats.Queued(strat)
 	return fmt.Sprintf("alloc: %d/%d, active: %d, released: %d, queued: %d", consumed, limit, active, released, queued)
+}
+
+func printf(logger *log.Logger, format string, v ...interface{}) {
+	if logger != nil {
+		logger.Printf(format, v...)
+	}
 }

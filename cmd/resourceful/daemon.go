@@ -24,6 +24,8 @@ import (
 func daemon(command string, args []string) {
 	prepareConsole(false)
 
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+
 	var (
 		selectedLeaseProvider string
 		boltPath              string
@@ -37,15 +39,15 @@ func daemon(command string, args []string) {
 	// Detect the working directory, which is the source of policy files
 	wd, err := os.Getwd()
 	if err != nil {
-		log.Printf("Unable to detect working directory: %v", err)
+		logger.Printf("Unable to detect working directory: %v", err)
 		os.Exit(2)
 	}
 
-	log.Println("Starting resourceful guardian daemon")
+	logger.Println("Starting resourceful guardian daemon")
 
 	leaseProvider, err := createLeaseProvider(selectedLeaseProvider, boltPath)
 	if err != nil {
-		log.Printf("Unable to create lease provider: %v", err)
+		logger.Printf("Unable to create lease provider: %v", err)
 		os.Exit(2)
 	}
 
@@ -56,48 +58,49 @@ func daemon(command string, args []string) {
 		PolicyProvider:  policyProvider,
 		LeaseProvider:   leaseProvider,
 		ShutdownTimeout: 5 * time.Second,
+		Logger:          logger,
 	}
 
-	log.Printf("Created providers (policy: %s, lease: %s)", policyProvider.ProviderName(), leaseProvider.ProviderName())
+	logger.Printf("Created providers (policy: %s, lease: %s)", policyProvider.ProviderName(), leaseProvider.ProviderName())
 
-	log.Printf("Policy source directory: %s\n", wd)
+	logger.Printf("Policy source directory: %s\n", wd)
 	// Verify that we're starting with a good policy set
 	policies, err := cfg.PolicyProvider.Policies()
 	if err != nil {
-		log.Printf("Failed to load policy set: %v", err)
+		logger.Printf("Failed to load policy set: %v", err)
 		os.Exit(2)
 	}
 
 	count := len(policies)
 	switch count {
 	case 1:
-		log.Printf("1 policy loaded")
+		logger.Printf("1 policy loaded")
 	default:
-		log.Printf("%d policies loaded", count)
+		logger.Printf("%d policies loaded", count)
 	}
 
 	ctx, shutdown := context.WithCancel(context.Background())
 	defer shutdown()
 	go func() {
-		waitForSignal()
+		waitForSignal(logger)
 		shutdown()
 	}()
 
 	err = guardian.Run(ctx, cfg)
 
 	if provErr := leaseProvider.Close(); provErr != nil {
-		log.Printf("The lease provider did not shut down correctly: %v", provErr)
+		logger.Printf("The lease provider did not shut down correctly: %v", provErr)
 	}
 	if provErr := policyProvider.Close(); provErr != nil {
-		log.Printf("The policy provider did not shut down correctly: %v", provErr)
+		logger.Printf("The policy provider did not shut down correctly: %v", provErr)
 	}
 
 	if err != http.ErrServerClosed {
-		log.Printf("Stopped resourceful guardian daemon due to error: %v", err)
+		logger.Printf("Stopped resourceful guardian daemon due to error: %v", err)
 		os.Exit(2)
 	}
 
-	log.Printf("Stopped resourceful guardian daemon")
+	logger.Printf("Stopped resourceful guardian daemon")
 }
 
 func createLeaseProvider(prov string, boltPath string) (lease.Provider, error) {
@@ -115,9 +118,9 @@ func createLeaseProvider(prov string, boltPath string) (lease.Provider, error) {
 	}
 }
 
-func waitForSignal() {
+func waitForSignal(logger *log.Logger) {
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	s := <-ch
-	log.Printf("Got signal: %v, exiting.", s)
+	logger.Printf("Got signal: %v, exiting.", s)
 }
