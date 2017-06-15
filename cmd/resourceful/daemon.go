@@ -21,19 +21,31 @@ import (
 	"github.com/scjalliance/resourceful/provider/memprov"
 )
 
+const (
+	defaultLeaseStorage = "memory"
+	defaultBoltPath     = "resourceful.boltdb"
+)
+
 func daemon(command string, args []string) {
 	prepareConsole(false)
 
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
 	var (
-		selectedLeaseProvider string
-		boltPath              string
+		leaseStorage = os.Getenv("LEASE_STORE")
+		boltPath     = os.Getenv("BOLT_PATH")
 	)
 
+	if leaseStorage == "" {
+		leaseStorage = defaultLeaseStorage
+	}
+	if boltPath == "" {
+		boltPath = defaultBoltPath
+	}
+
 	fs := flag.NewFlagSet(command, flag.ExitOnError)
-	fs.StringVar(&selectedLeaseProvider, "lease", "memory", "lease provider type [\"boltdb\", \"memory\"]")
-	fs.StringVar(&boltPath, "boltdb", "resourceful.boltdb", "bolt database file path")
+	fs.StringVar(&leaseStorage, "leasestore", leaseStorage, "lease storage type [\"bolt\", \"memory\"]")
+	fs.StringVar(&boltPath, "boltpath", boltPath, "bolt database file path")
 	fs.Parse(args)
 
 	// Detect the working directory, which is the source of policy files
@@ -45,7 +57,7 @@ func daemon(command string, args []string) {
 
 	logger.Println("Starting resourceful guardian daemon")
 
-	leaseProvider, err := createLeaseProvider(selectedLeaseProvider, boltPath)
+	leaseProvider, err := createLeaseProvider(leaseStorage, boltPath)
 	if err != nil {
 		logger.Printf("Unable to create lease provider: %v", err)
 		os.Exit(2)
@@ -103,18 +115,18 @@ func daemon(command string, args []string) {
 	logger.Printf("Stopped resourceful guardian daemon")
 }
 
-func createLeaseProvider(prov string, boltPath string) (lease.Provider, error) {
-	switch strings.ToLower(prov) {
-	case "m", "mem", "memory":
+func createLeaseProvider(storage string, boltPath string) (lease.Provider, error) {
+	switch strings.ToLower(storage) {
+	case "mem", "memory":
 		return memprov.New(), nil
-	case "b", "bolt", "boltdb":
+	case "bolt", "boltdb":
 		boltdb, err := bolt.Open(boltPath, 0666, nil)
 		if err != nil {
 			return nil, fmt.Errorf("unable to open or create bolt database \"%s\": %v", boltPath, err)
 		}
 		return boltprov.New(boltdb), nil
 	default:
-		return nil, fmt.Errorf("unknown lease provider: %s", prov)
+		return nil, fmt.Errorf("unknown lease storage type: %s", storage)
 	}
 }
 
