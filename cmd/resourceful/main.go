@@ -30,7 +30,7 @@ func main() {
 	case "list":
 		list(args)
 	case "daemon", "guardian":
-		daemon(args)
+		daemon(strings.Join(os.Args[0:2], " "), args)
 	default:
 		usage(fmt.Sprintf("\"%s\" is an unrecognized command.", command))
 	}
