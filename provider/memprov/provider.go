@@ -28,6 +28,16 @@ func New() *Provider {
 	}
 }
 
+// Close releases any resources consumed by the provider.
+func (p *Provider) Close() error {
+	return nil
+}
+
+// ProviderName returns the name of the provider.
+func (p *Provider) ProviderName() string {
+	return "In-Memory"
+}
+
 // LeaseView returns the current revision and lease set for the resource.
 func (p *Provider) LeaseView(resource string) (revision uint64, leases lease.Set, err error) {
 	page := p.leasePage(resource)

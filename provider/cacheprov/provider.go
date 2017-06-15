@@ -1,6 +1,7 @@
 package cacheprov
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/scjalliance/resourceful/policy"
@@ -17,6 +18,16 @@ type Provider struct {
 // New returns a new provider that caches policies for the given source.
 func New(source policy.Provider) *Provider {
 	return &Provider{Source: source}
+}
+
+// Close releases any resources consumed by the provider.
+func (p *Provider) Close() error {
+	return p.Source.Close()
+}
+
+// ProviderName returns the name of the provider.
+func (p *Provider) ProviderName() string {
+	return fmt.Sprintf("%s (with in-memory caching)", p.Source.ProviderName())
 }
 
 // Policies returns a complete set of resource policies.

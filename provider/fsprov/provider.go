@@ -26,6 +26,16 @@ func New(path string) *Provider {
 	return &Provider{path: path}
 }
 
+// Close releases any resources consumed by the provider.
+func (p *Provider) Close() error {
+	return nil
+}
+
+// ProviderName returns the name of the provider.
+func (p *Provider) ProviderName() string {
+	return "Filesystem"
+}
+
 // Policies will return a complete set of resource policies.
 func (p *Provider) Policies() (policies policy.Set, err error) {
 	files, dirErr := ioutil.ReadDir(p.path)
