@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -51,6 +52,36 @@ func NewClient(service string) (*Client, error) {
 
 	return &Client{
 		service:  service,
+		services: services,
+	}, nil
+}
+
+// NewClientWithServers creates a new guardian client that will use the given
+// list of guardian servers.
+func NewClientWithServers(servers []string) (client *Client, err error) {
+	var services []serviceresolver.Service
+	for _, server := range servers {
+		var (
+			target string
+			port   uint16
+		)
+		target, port, err = splitTargetPort(server)
+		if err != nil {
+			return
+		}
+		services = append(services, serviceresolver.Service{
+			Addrs: []*net.SRV{
+				&net.SRV{
+					Target: target,
+					Port:   port,
+				},
+			},
+		})
+	}
+	if len(services) == 0 {
+		return nil, errors.New("no services specified")
+	}
+	return &Client{
 		services: services,
 	}, nil
 }
@@ -148,6 +179,27 @@ func post(address, resource, consumer, instance string, env environment.Environm
 	}
 
 	err = json.NewDecoder(r.Body).Decode(response)
+
+	return
+}
+
+func splitTargetPort(addr string) (target string, port uint16, err error) {
+	target = addr
+	port = uint16(DefaultPort)
+
+	if strings.Contains(addr, ":") {
+		var p1 string
+		var p2 uint64
+		target, p1, err = net.SplitHostPort(addr)
+		if err != nil {
+			return
+		}
+		p2, err = strconv.ParseUint(p1, 10, 16)
+		if err != nil {
+			return
+		}
+		port = uint16(p2)
+	}
 
 	return
 }

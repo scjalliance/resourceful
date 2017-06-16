@@ -34,26 +34,33 @@ type Runner struct {
 }
 
 // New creates a new runner for the given program and arguments.
-func New(program string, args []string) (*Runner, error) {
+//
+// If the given set of guardian server addresses is empty the servers will be
+// detected via service discovery.
+func New(program string, args []string, servers []string) (*Runner, error) {
 	r := &Runner{
 		program: program,
 		args:    args,
 		retry:   time.Second * 5,
 		icon:    leaseui.DefaultIcon(),
 	}
-	if err := r.init(); err != nil {
+	if err := r.init(servers); err != nil {
 		return nil, err
 	}
 	return r, nil
 }
 
-func (r *Runner) init() (err error) {
+func (r *Runner) init(servers []string) (err error) {
 	r.consumer, r.instance, r.env, err = DetectEnvironment()
 	if err != nil {
 		return fmt.Errorf("runner: unable to detect environment: %v", err)
 	}
 
-	r.client, err = guardian.NewClient("resourceful")
+	if len(servers) == 0 {
+		r.client, err = guardian.NewClient("resourceful")
+	} else {
+		r.client, err = guardian.NewClientWithServers(servers)
+	}
 	if err != nil {
 		return fmt.Errorf("runner: unable to create resourceful guardian client: %v", err)
 	}
