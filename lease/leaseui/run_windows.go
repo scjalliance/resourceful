@@ -9,6 +9,7 @@ import (
 
 	"github.com/lxn/walk"
 	"github.com/scjalliance/resourceful/guardian"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 func runDialog(ctx context.Context, form *walk.Dialog) int {
@@ -89,6 +90,29 @@ func WaitForActive(ctx context.Context, icon *Icon, program, consumer string, cu
 	if final.Err != nil {
 		err = final.Err
 	}
+
+	return
+}
+
+// MonitorConnection will create and manage a connection monitor user interface.
+// It will return when a connection to the server is re-established or the
+// user has closed the interface.
+func MonitorConnection(ctx context.Context, icon *Icon, program, consumer string, current lease.Lease, leaseErr error, responses <-chan guardian.Acquisition) (result Result, final lease.Lease, err error) {
+	// Create a view model that will be consumed by the connection dialog.
+	// Prime it with the most recent response that was received.
+	model := NewConnectionModel(icon, program, consumer, current, leaseErr)
+
+	// Create the connection dialog.
+	dlg, err := NewConnectionDialog(model)
+	if err != nil {
+		err = fmt.Errorf("unable to create connection user interface: %v", err)
+		return
+	}
+
+	// Run the dialog while syncing the view model with responses that are
+	// coming in on responses.
+	result = dlg.RunWithSync(ctx, responses)
+	final = model.Lease() // Return the last good lease that was fed into the model
 
 	return
 }

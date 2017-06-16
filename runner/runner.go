@@ -19,16 +19,18 @@ import (
 // It is capable of showing a queued lease dialog to the user if a lease cannot
 // be acquired immediately.
 type Runner struct {
-	program  string
-	args     []string
-	consumer string
-	instance string
-	env      environment.Environment
-	retry    time.Duration
-	icon     *leaseui.Icon
-	client   *guardian.Client
-	running  bool
-	current  lease.Lease
+	program   string
+	args      []string
+	consumer  string
+	instance  string
+	env       environment.Environment
+	retry     time.Duration
+	icon      *leaseui.Icon
+	client    *guardian.Client
+	running   bool
+	online    bool
+	current   lease.Lease
+	dismissal time.Time
 }
 
 // New creates a new runner for the given program and arguments.
@@ -79,8 +81,10 @@ func (r *Runner) Run() (err error) {
 		}
 
 		if response.Err != nil {
+			r.setOnline(false)
 			err = r.handleError(ctx, ch, response.Err, shutdown)
 		} else {
+			r.setOnline(true)
 			r.current = response.Lease
 
 			switch response.Lease.Status {
@@ -115,9 +119,43 @@ func (r *Runner) handleError(ctx context.Context, ch <-chan guardian.Acquisition
 	if r.current.Expired(now) {
 		log.Printf("Lease has expired. Shutting down %s", r.program)
 		shutdown()
-	} else {
-		remaining := r.current.ExpirationTime().Sub(now)
-		log.Printf("Lease time remaining: %s", remaining.String())
+		return nil
+	}
+
+	expiration := r.current.ExpirationTime()
+	remaining := expiration.Sub(now)
+
+	log.Printf("Lease time remaining: %s", remaining.String())
+
+	if !shouldWarn(r.current, now, r.dismissal) {
+		return nil
+	}
+
+	monCtx, monCancel := context.WithTimeout(ctx, remaining)
+	defer monCancel()
+
+	result, current, err := leaseui.MonitorConnection(monCtx, r.icon, r.program, r.consumer, r.current, err, ch)
+	if err != nil {
+		return err
+	}
+
+	r.current = current
+
+	switch result {
+	case leaseui.Success:
+		// The server came back online
+		r.setOnline(true)
+	case leaseui.UserCancelled, leaseui.UserClosed:
+		// The user intentionally stopped waiting
+		r.dismissal = time.Now()
+	case leaseui.ChannelClosed:
+		// The lease maintainer is shutting down
+	case leaseui.ContextCancelled:
+		// Either the system is shutting down or the lease expired
+		if r.current.Expired(now) {
+			log.Printf("Lease has expired. Shutting down %s", r.program)
+			shutdown()
+		}
 	}
 
 	return nil
@@ -126,11 +164,16 @@ func (r *Runner) handleError(ctx context.Context, ch <-chan guardian.Acquisition
 // handleActive processes active lease acquisitions.
 func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc) (err error) {
 	if r.running {
-		log.Printf("Lease maintained")
+		if !r.online {
+			log.Printf("Lease recovered")
+		} else {
+			log.Printf("Lease maintained")
+		}
 		return
 	}
 
 	log.Printf("Lease acquired")
+
 	return r.execute(ctx, completion)
 }
 
@@ -185,4 +228,62 @@ func (r *Runner) execute(ctx context.Context, completion context.CancelFunc) (er
 	}()
 
 	return nil
+}
+
+func (r *Runner) setOnline(online bool) {
+	if r.online == online {
+		return
+	}
+	if online {
+		log.Printf("Connection online")
+	} else {
+		log.Printf("Connection offline")
+	}
+	r.online = online
+}
+
+// shouldWarn returns true if the runner should display a connection dialog.
+func shouldWarn(ls lease.Lease, at, last time.Time) bool {
+	expiration := ls.ExpirationTime()
+	if expiration.Before(at) {
+		return true
+	}
+
+	remaining := expiration.Sub(at)
+	if remaining < time.Minute*1 {
+		log.Printf("Less than 1 minute remains")
+		return true
+	}
+
+	var (
+		oneThird   = ls.Duration / 3
+		oneQuarter = ls.Duration / 4
+	)
+
+	if !last.IsZero() {
+		if at.Before(last) {
+			// Something weird happened, like a wall clock shift
+			return true
+		}
+		sinceLast := at.Sub(last)
+		if sinceLast < oneQuarter {
+			// Warn once every quarter duration
+			return false
+		}
+	}
+
+	if remaining < oneThird {
+		// Warn when we're two thirds through the current lease
+		return true
+	}
+
+	refresh := ls.EffectiveRefresh()
+	missed := ls.Renewed.Add(refresh)
+
+	if at.After(missed.Add(oneQuarter)) {
+		// Warn when a quarter duration has passed since the last renewal
+		return true
+	}
+
+	return false
 }
