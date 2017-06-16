@@ -34,3 +34,6 @@ cmd/resourceful/resourceful
 *.bolt
 *.boltdb
 *.lock
+
+* Log files
+*.log

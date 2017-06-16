@@ -19,24 +19,26 @@ import (
 	"github.com/scjalliance/resourceful/provider/boltprov"
 	"github.com/scjalliance/resourceful/provider/cacheprov"
 	"github.com/scjalliance/resourceful/provider/fsprov"
+	"github.com/scjalliance/resourceful/provider/logprov"
 	"github.com/scjalliance/resourceful/provider/memprov"
 )
 
 const (
-	defaultLeaseStorage = "memory"
-	defaultBoltPath     = "resourceful.boltdb"
+	defaultLeaseStorage    = "memory"
+	defaultBoltPath        = "resourceful.boltdb"
+	defaultTransactionPath = "resourceful.tx.log"
 )
 
-func daemon(command string, args []string) {
+func daemon(command string, args []string) (err error) {
 	prepareConsole(false)
 
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
 	var (
-		leaseStorage = os.Getenv("LEASE_STORE")
-		boltPath     = os.Getenv("BOLT_PATH")
-		policyPath   = os.Getenv("POLICY_PATH")
-		err          error
+		leaseStorage    = os.Getenv("LEASE_STORE")
+		boltPath        = os.Getenv("BOLT_PATH")
+		policyPath      = os.Getenv("POLICY_PATH")
+		transactionPath = os.Getenv("TRANSACTION_LOG")
 	)
 
 	if leaseStorage == "" {
@@ -50,34 +52,57 @@ func daemon(command string, args []string) {
 		policyPath, err = os.Getwd()
 		if err != nil {
 			logger.Printf("Unable to detect working directory: %v", err)
-			os.Exit(2)
+			return
 		}
+	}
+	if transactionPath == "" {
+		transactionPath = defaultTransactionPath
 	}
 
 	fs := flag.NewFlagSet(command, flag.ExitOnError)
 	fs.StringVar(&leaseStorage, "leasestore", leaseStorage, "lease storage type [\"bolt\", \"memory\"]")
 	fs.StringVar(&boltPath, "boltpath", boltPath, "bolt database file path")
 	fs.StringVar(&policyPath, "policypath", policyPath, "policy directory path")
+	fs.StringVar(&transactionPath, "txlog", transactionPath, "transaction log file path")
 	fs.Parse(args)
 
 	policyPath, err = filepath.Abs(policyPath)
 	if err != nil {
 		logger.Printf("Invalid policy path directory \"%s\": %v", policyPath, err)
-		os.Exit(2)
+		return
 	}
 
 	logger.Println("Starting resourceful guardian daemon")
+	defer logger.Printf("Stopped resourceful guardian daemon")
+
+	txFile, err := createTransactionLog(transactionPath)
+	if err != nil {
+		logger.Printf("Unable to open transaction log: %v", err)
+		return
+	}
+	if txFile != nil {
+		defer txFile.Close()
+	}
 
 	leaseProvider, err := createLeaseProvider(leaseStorage, boltPath)
 	if err != nil {
 		logger.Printf("Unable to create lease provider: %v", err)
-		os.Exit(2)
+		return
 	}
+
+	if txFile != nil {
+		txLogger := log.New(txFile, "", log.LstdFlags)
+		leaseProvider = logprov.New(leaseProvider, txLogger)
+	}
+
+	defer closeProvider(leaseProvider, "lease", logger)
 
 	policyProvider := cacheprov.New(fsprov.New(policyPath))
 
+	defer closeProvider(policyProvider, "policy", logger)
+
 	cfg := guardian.ServerConfig{
-		ListenSpec:      ":5877",
+		ListenSpec:      fmt.Sprintf(":%d", guardian.DefaultPort),
 		PolicyProvider:  policyProvider,
 		LeaseProvider:   leaseProvider,
 		ShutdownTimeout: 5 * time.Second,
@@ -91,7 +116,7 @@ func daemon(command string, args []string) {
 	policies, err := cfg.PolicyProvider.Policies()
 	if err != nil {
 		logger.Printf("Failed to load policy set: %v", err)
-		os.Exit(2)
+		return
 	}
 
 	count := len(policies)
@@ -111,19 +136,17 @@ func daemon(command string, args []string) {
 
 	err = guardian.Run(ctx, cfg)
 
-	if provErr := leaseProvider.Close(); provErr != nil {
-		logger.Printf("The lease provider did not shut down correctly: %v", provErr)
-	}
-	if provErr := policyProvider.Close(); provErr != nil {
-		logger.Printf("The policy provider did not shut down correctly: %v", provErr)
-	}
-
 	if err != http.ErrServerClosed {
 		logger.Printf("Stopped resourceful guardian daemon due to error: %v", err)
-		os.Exit(2)
 	}
+	return
+}
 
-	logger.Printf("Stopped resourceful guardian daemon")
+func createTransactionLog(path string) (file *os.File, err error) {
+	if path == "" {
+		return nil, nil
+	}
+	return os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 }
 
 func createLeaseProvider(storage string, boltPath string) (lease.Provider, error) {
@@ -138,6 +161,18 @@ func createLeaseProvider(storage string, boltPath string) (lease.Provider, error
 		return boltprov.New(boltdb), nil
 	default:
 		return nil, fmt.Errorf("unknown lease storage type: %s", storage)
+	}
+}
+
+type closer interface {
+	Close() error
+}
+
+func closeProvider(prov closer, name string, logger *log.Logger) {
+	if err := prov.Close(); err != nil {
+		if logger != nil {
+			logger.Printf("The %s provider did not shut down correctly: %v", name, err)
+		}
 	}
 }
 
