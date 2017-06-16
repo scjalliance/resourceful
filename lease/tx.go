@@ -1,7 +1,6 @@
 package lease
 
 import (
-	"bytes"
 	"sort"
 	"time"
 )
@@ -149,15 +148,12 @@ func (tx *Tx) Ops() []Op {
 	return tx.ops
 }
 
-// Effect returns a multiline string summarizing the effects of the
-// transaction.
-func (tx *Tx) Effect() string {
-	var buffer bytes.Buffer
-	for i, op := range tx.ops {
-		if i > 0 {
-			buffer.WriteString("\n")
+// Effects returns a set of strings describing the effects of the transaction.
+func (tx *Tx) Effects() (effects []string) {
+	for _, op := range tx.ops {
+		for _, e := range op.Effects() {
+			effects = append(effects, e)
 		}
-		buffer.WriteString(op.Effect())
 	}
-	return buffer.String()
+	return
 }

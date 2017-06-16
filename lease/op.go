@@ -1,9 +1,6 @@
 package lease
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // Action is a type of lease operation
 type Action uint32
@@ -15,6 +12,22 @@ const (
 	Update
 	Delete
 )
+
+// String returns a string representation of the action type.
+func (t Action) String() string {
+	switch t {
+	case None:
+		return "none"
+	case Create:
+		return "create"
+	case Update:
+		return "update"
+	case Delete:
+		return "delete"
+	default:
+		return "unknown"
+	}
+}
 
 // UpdateType is a type of lease update.
 type UpdateType uint32
@@ -64,17 +77,17 @@ func (op *Op) UpdateType() UpdateType {
 	}
 }
 
-// Effect returns a string representation summarizing the effect of the
-// operation.
-func (op *Op) Effect() string {
+// Effects returns a set of strings describing the effects of the operation.
+func (op *Op) Effects() (effects []string) {
 	switch op.Type {
-	case Create:
-		return fmt.Sprintf("CREATE LEASE %s", op.Lease.Subject())
-	case Update:
-		return fmt.Sprintf("%s LEASE %s FROM %s", strings.ToUpper(op.UpdateType().String()), op.Lease.Subject(), op.Previous.Subject())
-	case Delete:
-		return fmt.Sprintf("DELETE LEASE %s", op.Lease.Subject())
-	default:
-		return fmt.Sprintf("UNKNOWN LEASE EFFECT %d %s", op.Type, op.Lease.Subject())
+	case Delete, Update:
+		effects = append(effects, fmt.Sprintf("%s %s DELETE %s", op.Previous.Instance, op.Previous.Consumer, op.Previous.Resource))
 	}
+
+	switch op.Type {
+	case Create, Update:
+		effects = append(effects, fmt.Sprintf("%s %s CREATE %s", op.Lease.Instance, op.Lease.Consumer, op.Lease.Resource))
+	}
+
+	return
 }
