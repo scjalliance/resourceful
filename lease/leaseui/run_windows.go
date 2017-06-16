@@ -38,7 +38,7 @@ func runDialog(ctx context.Context, form *walk.Dialog) int {
 	return form.Run()
 }
 
-func runDialogWithSync(ctx context.Context, form *walk.Dialog, model Model, responses <-chan guardian.Acquisition, fn SyncFunc) (result Result) {
+func runDialogWithSync(ctx context.Context, form *walk.Dialog, model Model, responses <-chan guardian.Acquisition, fn EvalFunc) (result Result) {
 	// Keep the dialog in sync with lease responses
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -67,8 +67,7 @@ func runDialogWithSync(ctx context.Context, form *walk.Dialog, model Model, resp
 }
 
 // WaitForActive will create and manage a queued lease user interface. It will
-// return when an active lease is acquired or the user has indicated that they
-// would like to cancel.
+// return when an active lease is acquired or the user has closed the interface.
 func WaitForActive(ctx context.Context, icon *Icon, program, consumer string, current guardian.Acquisition, responses <-chan guardian.Acquisition) (result Result, final guardian.Acquisition, err error) {
 	// Create a view model that will be consumed by the queued lease dialog.
 	// Prime it with the most recent response that was received.

@@ -1,5 +1,3 @@
-// +build windows
-
 package leaseui
 
 import (
@@ -9,13 +7,12 @@ import (
 	"github.com/scjalliance/resourceful/guardian"
 )
 
-type SyncFunc func(response guardian.Acquisition) (success bool)
-
 // Sync will synchronize the model with the responses received on the given
-// channel until an active lease is acquired or the channel is closed.
+// channel until the evaluation function reports success, the channel is
+// closed or the context is cancelled.
 //
-// Sync returns true if an active lease was acquired.
-func Sync(ctx context.Context, model Model, responses <-chan guardian.Acquisition, fn SyncFunc) (result Result) {
+// Sync returns Success, ChannelClosed or ContextCancelled.
+func Sync(ctx context.Context, model Model, responses <-chan guardian.Acquisition, fn EvalFunc) (result Result) {
 	sleepRound()
 
 	ticker := time.NewTicker(time.Second)
