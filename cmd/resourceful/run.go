@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"log"
 	"os"
 
 	"github.com/scjalliance/resourceful/runner"
@@ -16,11 +18,22 @@ func run(args []string) {
 	if len(args) == 0 {
 		runError(errors.New("no executable path provided to run"))
 	}
+
 	servers, args := splitServersArgs(args)
 	program := args[0]
 	args = args[1:]
 	icon := programIcon()
-	err := runner.RunWithIcon(program, args, servers, icon)
+
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+
+	ctx, shutdown := context.WithCancel(context.Background())
+	defer shutdown()
+	go func() {
+		waitForSignal(logger)
+		shutdown()
+	}()
+
+	err := runner.RunWithIcon(ctx, program, args, servers, icon)
 	if err != nil {
 		runError(err)
 	}

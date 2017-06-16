@@ -7,10 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -174,11 +172,4 @@ func closeProvider(prov closer, name string, logger *log.Logger) {
 			logger.Printf("The %s provider did not shut down correctly: %v", name, err)
 		}
 	}
-}
-
-func waitForSignal(logger *log.Logger) {
-	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	s := <-ch
-	logger.Printf("Got signal: %v, exiting.", s)
 }

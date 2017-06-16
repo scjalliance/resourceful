@@ -74,8 +74,8 @@ func (r *Runner) SetIcon(icon *leaseui.Icon) {
 }
 
 // Run will attempt to acquire an active lease and run the command.
-func (r *Runner) Run() (err error) {
-	ctx, shutdown := context.WithCancel(context.Background())
+func (r *Runner) Run(ctx context.Context) (err error) {
+	ctx, shutdown := context.WithCancel(ctx)
 	maintainer := r.client.Maintain(ctx, r.program, r.consumer, r.instance, r.env, r.retry)
 	defer shutdown() // Make sure the lease maintainer is shut down if there's an error
 
