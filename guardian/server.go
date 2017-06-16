@@ -165,6 +165,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				Consumer:    req.Consumer,
 				Instance:    req.Instance,
 				Environment: req.Environment,
+				Started:     now,
 				Renewed:     now,
 				Strategy:    strat,
 				Limit:       limit,
@@ -189,20 +190,28 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 			tx := lease.NewTx(req.Resource, revision, leases)
 
 			acc := leaseutil.Refresh(tx, now)
+			consumed := acc.Consumed(strat)
+			released := acc.Released(req.Consumer)
 
 			existing, found := tx.Instance(req.Consumer, req.Instance)
 			if found {
-				// Lease renewal
-				mode = "Renewal"
-				ls.Status = existing.Status
-				ls.Started = existing.Started
-				tx.Update(existing.Consumer, existing.Instance, ls)
+				if existing.Status == lease.Released {
+					// Renewal of a released lease, possibly because of timing skew
+					// Because the lease has expired we treat this as a creation
+					if consumed <= limit {
+						ls.Status = lease.Active
+					} else {
+						ls.Status = lease.Queued
+					}
+					tx.Update(existing.Consumer, existing.Instance, ls)
+				} else {
+					// Renewal of active or queued lease
+					mode = "Renewal"
+					ls.Status = existing.Status
+					ls.Started = existing.Started
+					tx.Update(existing.Consumer, existing.Instance, ls)
+				}
 			} else {
-				consumed := acc.Consumed(strat)
-				released := acc.Released(req.Consumer)
-
-				ls.Started = now
-
 				if released > 0 && consumed <= limit {
 					// Lease replacement (for an expired or released lease previously
 					// issued to the the same consumer, that's in a decaying state)
@@ -223,8 +232,6 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 					tx.Create(ls)
 				}
 			}
-
-			//suffix := fmt.Sprintf("pol: %d, alloc: %d/%d, d: %v", len(pol), allocation, limit, duration)
 
 			// Attempt to commit the transaction
 			err = cfg.LeaseProvider.LeaseCommit(tx)
@@ -249,12 +256,6 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 			Lease:   ls,
 			Leases:  leases,
 		}
-
-		/*
-			if !accepted {
-				response.Message = fmt.Sprintf("Resource limit of %d has already been met", limit)
-			}
-		*/
 
 		data, err := json.Marshal(response)
 		if err != nil {
