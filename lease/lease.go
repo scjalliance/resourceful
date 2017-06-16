@@ -1,6 +1,7 @@
 package lease
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
@@ -91,6 +92,12 @@ func (ls *Lease) EffectiveRefresh() (interval time.Duration) {
 	}
 
 	return interval
+}
+
+// Subject returns a string identifying the subject of the lease, which
+// includes the resource, consumer and instance.
+func (ls *Lease) Subject() string {
+	return fmt.Sprintf("\"%s\" \"%s\" \"%s\"", ls.Resource, ls.Consumer, ls.Instance)
 }
 
 // Clone returns a deep copy of the lease.
