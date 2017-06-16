@@ -28,7 +28,7 @@ type LeaseModel struct {
 	response   guardian.Acquisition
 }
 
-// NewLeaseModel returns a queued lease view model for the given and response.
+// NewLeaseModel returns a queued lease dialog view model.
 func NewLeaseModel(icon *Icon, program, consumer string, response guardian.Acquisition) *LeaseModel {
 	m := &LeaseModel{
 		icon:     icon,

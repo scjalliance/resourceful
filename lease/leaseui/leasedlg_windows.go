@@ -7,6 +7,7 @@ import (
 
 	"github.com/lxn/walk"
 	"github.com/scjalliance/resourceful/guardian"
+	"github.com/scjalliance/resourceful/lease"
 
 	ui "github.com/lxn/walk/declarative"
 )
@@ -86,8 +87,8 @@ func (dlg *LeaseDialog) Run(ctx context.Context) int {
 // RunWithSync returns the result of the dialog. If the context was cancelled,
 // an active lease was acquired or the channel was closed it will return
 // walk.DlgCmdCancel.
-func (dlg *LeaseDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) int {
-	return runDialogWithSync(ctx, dlg.form, dlg.model, responses)
+func (dlg *LeaseDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
+	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, leaseAcquired)
 }
 
 // Result returns the result returned by the dialog.
@@ -107,4 +108,11 @@ func (dlg *LeaseDialog) Cancelled() bool {
 	default:
 		return false
 	}
+}
+
+func leaseAcquired(response guardian.Acquisition) (success bool) {
+	if response.Err != nil {
+		return false
+	}
+	return response.Lease.Status == lease.Active
 }

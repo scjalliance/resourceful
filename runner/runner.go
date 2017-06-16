@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os/exec"
@@ -78,7 +79,7 @@ func (r *Runner) Run() (err error) {
 		}
 
 		if response.Err != nil {
-			err = r.handleError(response.Err, shutdown)
+			err = r.handleError(ctx, ch, response.Err, shutdown)
 		} else {
 			r.current = response.Lease
 
@@ -99,13 +100,13 @@ func (r *Runner) Run() (err error) {
 }
 
 // handleError processes lease retrieval errors.
-func (r *Runner) handleError(err error, shutdown context.CancelFunc) error {
+func (r *Runner) handleError(ctx context.Context, ch <-chan guardian.Acquisition, err error, shutdown context.CancelFunc) error {
 	if !r.running {
 		return err
 	}
 
 	if r.current.Status != lease.Active {
-		panic("unexpected lease state when program is running")
+		return errors.New("unexpected lease state when program is running")
 	}
 
 	log.Printf("Unable to renew active lease due to error: %v", err)
@@ -144,12 +145,14 @@ func (r *Runner) handleQueued(ctx context.Context, response guardian.Acquisition
 
 	log.Printf("Lease queued")
 
-	acquired, err := leaseui.WaitForActive(ctx, r.icon, r.program, r.consumer, response, ch)
-	if err != nil || !acquired {
+	result, response, err := leaseui.WaitForActive(ctx, r.icon, r.program, r.consumer, response, ch)
+	if err != nil || result != leaseui.Success {
 		// The user intentionally stopped waiting or something went wrong
 		shutdown()
 		return
 	}
+
+	r.current = response.Lease
 
 	return r.execute(ctx, shutdown)
 }

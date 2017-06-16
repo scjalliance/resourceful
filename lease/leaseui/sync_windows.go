@@ -3,17 +3,19 @@
 package leaseui
 
 import (
+	"context"
 	"time"
 
 	"github.com/scjalliance/resourceful/guardian"
-	"github.com/scjalliance/resourceful/lease"
 )
+
+type SyncFunc func(response guardian.Acquisition) (success bool)
 
 // Sync will synchronize the model with the responses received on the given
 // channel until an active lease is acquired or the channel is closed.
 //
 // Sync returns true if an active lease was acquired.
-func Sync(model Model, responses <-chan guardian.Acquisition) (acquired bool) {
+func Sync(ctx context.Context, model Model, responses <-chan guardian.Acquisition, fn SyncFunc) (result Result) {
 	sleepRound()
 
 	ticker := time.NewTicker(time.Second)
@@ -23,18 +25,20 @@ func Sync(model Model, responses <-chan guardian.Acquisition) (acquired bool) {
 		select {
 		case response, ok := <-responses:
 			if !ok {
-				return false
+				return ChannelClosed
 			}
 
 			model.Update(response)
 
 			// TODO: Examine and report errors?
 
-			if response.Lease.Status == lease.Active {
-				return true
+			if fn(response) {
+				return Success
 			}
 		case <-ticker.C:
 			model.Refresh()
+		case <-ctx.Done():
+			return ContextCancelled
 		}
 	}
 }
