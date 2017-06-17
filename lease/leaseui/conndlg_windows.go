@@ -26,25 +26,34 @@ func NewConnectionDialog(model *ConnectionModel) (dlg *ConnectionDialog, err err
 		model: model,
 	}
 
+	size := ui.Size{Width: 500, Height: 200}
+
 	dlg.ui = &ui.Dialog{
 		Icon:     (*walk.Icon)(model.Icon()),
 		Title:    model.Title(),
-		MinSize:  ui.Size{Width: 300, Height: 200},
-		Layout:   ui.Grid{},
+		MinSize:  size,
+		MaxSize:  size,
+		Layout:   ui.Grid{Columns: 2},
 		AssignTo: &dlg.form,
 		Children: []ui.Widget{
-			ui.Composite{
-				Layout: ui.Grid{Columns: 1},
-				Children: []ui.Widget{
-					ui.Label{Text: model.Description()},
-					ui.Label{Text: model.Remaining(), AssignTo: &dlg.remaining},
-					ui.Label{Text: model.Warning()},
+			ui.Label{Text: model.Description(), Row: 0, Column: 0, ColumnSpan: 2},
+			ui.Label{Text: model.Remaining(), AssignTo: &dlg.remaining, Row: 1, Column: 0, ColumnSpan: 2},
+			ui.Label{Text: model.Warning(), Row: 2, Column: 0, ColumnSpan: 2},
+			ui.VSpacer{Row: 3, Column: 0, ColumnSpan: 2},
+			ui.HSpacer{Row: 4, Column: 0},
+			ui.PushButton{
+				Row:    4,
+				Column: 1,
+				Text:   "Ignore",
+				OnClicked: func() {
+					dlg.form.Close(walk.DlgCmdAbort)
 				},
 			},
 		},
 	}
 
 	model.RefreshEvent().Attach(func() {
+		dlg.form.SetTitle(model.Title())
 		dlg.remaining.SetText(model.Remaining())
 	})
 
