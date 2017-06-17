@@ -36,6 +36,8 @@ type Server struct {
 // Run will create and run a resourceful guardian server until the provided
 // context is canceled.
 func Run(ctx context.Context, cfg ServerConfig) (err error) {
+	purge(cfg)
+	defer purge(cfg)
 	printf(cfg.Logger, "Starting HTTP listener on %s", cfg.ListenSpec)
 
 	listener, err := net.Listen("tcp", cfg.ListenSpec)
@@ -346,6 +348,45 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 
 		fmt.Fprintf(w, string(data))
 	})
+}
+
+func purge(cfg ServerConfig) error {
+	resources, err := cfg.LeaseProvider.LeaseResources()
+	if err != nil {
+		return err
+	}
+	for _, resource := range resources {
+		for attempt := 0; attempt < 5; attempt++ {
+			var (
+				leases   lease.Set
+				revision uint64
+			)
+			revision, leases, err = cfg.LeaseProvider.LeaseView(resource)
+			if err != nil {
+				printf(cfg.Logger, "Purge of \"%s\" failed: %v\n", resource, err)
+				continue
+			}
+
+			// Prepare a purge transaction
+			now := time.Now()
+			tx := lease.NewTx(resource, revision, leases)
+			leaseutil.Refresh(tx, now)
+			if len(tx.Ops()) == 0 {
+				break // Nothing to purge
+			}
+
+			// Attempt to commit the transaction
+			err = cfg.LeaseProvider.LeaseCommit(tx)
+			if err == nil {
+				break
+			}
+			printf(cfg.Logger, "Purge of \"%s\" failed: %v\n", resource, err)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func initRequest(cfg ServerConfig, r *http.Request) (req transport.Request, policies policy.Set, err error) {
