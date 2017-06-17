@@ -31,6 +31,11 @@ func (p *Provider) ProviderName() string {
 	return fmt.Sprintf("%s (with logged transactions)", p.source.ProviderName())
 }
 
+// LeaseResources returns all of the resources with lease data.
+func (p *Provider) LeaseResources() (resources []string, err error) {
+	return p.source.LeaseResources()
+}
+
 // LeaseView returns the current revision and lease set for the resource.
 func (p *Provider) LeaseView(resource string) (revision uint64, leases lease.Set, err error) {
 	return p.source.LeaseView(resource)

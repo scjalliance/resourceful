@@ -38,6 +38,16 @@ func (p *Provider) ProviderName() string {
 	return "In-Memory"
 }
 
+// LeaseResources returns all of the resources with lease data.
+func (p *Provider) LeaseResources() (resources []string, err error) {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	for resource := range p.leasePages {
+		resources = append(resources, resource)
+	}
+	return
+}
+
 // LeaseView returns the current revision and lease set for the resource.
 func (p *Provider) LeaseView(resource string) (revision uint64, leases lease.Set, err error) {
 	page := p.leasePage(resource)

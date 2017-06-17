@@ -40,6 +40,31 @@ func (p *Provider) ProviderName() string {
 	return "bolt db"
 }
 
+// LeaseResources returns all of the resources with lease data.
+func (p *Provider) LeaseResources() (resources []string, err error) {
+	err = p.db.View(func(btx *bolt.Tx) error {
+		root := btx.Bucket(p.root)
+		if root == nil {
+			return nil
+		}
+
+		container := root.Bucket([]byte(LeaseBucket))
+		if container == nil {
+			return nil
+		}
+
+		c := container.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if v != nil {
+				resources = append(resources, string(k))
+			}
+		}
+
+		return nil
+	})
+	return
+}
+
 // LeaseView returns the current revision and lease set for the resource.
 func (p *Provider) LeaseView(resource string) (revision uint64, leases lease.Set, err error) {
 	err = p.db.View(func(btx *bolt.Tx) error {
