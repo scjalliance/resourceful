@@ -4,6 +4,7 @@ package leaseui
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/lxn/walk"
 	"github.com/scjalliance/resourceful/guardian"
@@ -26,14 +27,14 @@ func NewQueuedDialog(model *QueuedModel) (dlg *QueuedDialog, err error) {
 
 	dlg.ui = &ui.Dialog{
 		Icon:     (*walk.Icon)(model.Icon()),
-		Title:    model.Title(),
+		Title:    dlg.title(),
 		MinSize:  ui.Size{Width: 600, Height: 400},
 		Layout:   ui.Grid{},
 		AssignTo: &dlg.form,
 		Children: []ui.Widget{
-			ui.Label{Text: model.Description(), Row: 0, Column: 0, ColumnSpan: 2},
+			ui.Label{Text: dlg.description(), Row: 0, Column: 0, ColumnSpan: 2},
 			ui.VSpacer{Size: 1, Row: 1, Column: 0, ColumnSpan: 2},
-			ui.Label{Text: model.TableCaption(), Row: 2, Column: 0, ColumnSpan: 2},
+			ui.Label{Text: dlg.tableCaption(), Row: 2, Column: 0, ColumnSpan: 2},
 			ui.TableView{
 				Row:        3,
 				Column:     0,
@@ -90,21 +91,17 @@ func (dlg *QueuedDialog) RunWithSync(ctx context.Context, responses <-chan guard
 	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ActiveLeaseAcquired)
 }
 
-// Result returns the result returned by the dialog.
-//
-// Result should be called after the dialog has been closed.
-func (dlg *QueuedDialog) Result() int {
-	return dlg.form.Result()
+// title returns the title for the dialog.
+func (dlg *QueuedDialog) title() string {
+	return fmt.Sprintf("Unable to launch %s", dlg.model.program)
 }
 
-// Cancelled returns true if the dialog was cancelled by the user.
-//
-// Cancelled should be called after the dialog has been closed.
-func (dlg *QueuedDialog) Cancelled() bool {
-	switch dlg.Result() {
-	case walk.DlgCmdAbort, walk.DlgCmdNone:
-		return true
-	default:
-		return false
-	}
+// description returns the description for the dialog.
+func (dlg *QueuedDialog) description() string {
+	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", dlg.model.ResourceName(), dlg.model.Consumed(), dlg.model.response.Lease.Limit)
+}
+
+// tableCaption returns the caption for the table.
+func (dlg *QueuedDialog) tableCaption() string {
+	return "Here's a list of everyone that's using or waiting for a license right now:"
 }

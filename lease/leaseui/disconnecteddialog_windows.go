@@ -4,6 +4,7 @@ package leaseui
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/lxn/walk"
 	"github.com/scjalliance/resourceful/guardian"
@@ -13,15 +14,15 @@ import (
 
 // DisconnectedDialog is a lost connection dialog.
 type DisconnectedDialog struct {
-	ui        *ui.Dialog
-	form      *walk.Dialog
-	remaining *walk.Label
-	model     *DisconnectedModel
+	ui             *ui.Dialog
+	form           *walk.Dialog
+	remainingLabel *walk.Label
+	model          *ConnectionModel
 }
 
 // NewDisconnectedDialog returns a new connection dialog with the given view
 // model.
-func NewDisconnectedDialog(model *DisconnectedModel) (dlg *DisconnectedDialog, err error) {
+func NewDisconnectedDialog(model *ConnectionModel) (dlg *DisconnectedDialog, err error) {
 	dlg = &DisconnectedDialog{
 		model: model,
 	}
@@ -30,15 +31,15 @@ func NewDisconnectedDialog(model *DisconnectedModel) (dlg *DisconnectedDialog, e
 
 	dlg.ui = &ui.Dialog{
 		Icon:     (*walk.Icon)(model.Icon()),
-		Title:    model.Title(),
+		Title:    dlg.title(),
 		MinSize:  size,
 		MaxSize:  size,
 		Layout:   ui.Grid{Columns: 2},
 		AssignTo: &dlg.form,
 		Children: []ui.Widget{
-			ui.Label{Text: model.Description(), Row: 0, Column: 0, ColumnSpan: 2},
-			ui.Label{Text: model.Remaining(), AssignTo: &dlg.remaining, Row: 1, Column: 0, ColumnSpan: 2},
-			ui.Label{Text: model.Warning(), Row: 2, Column: 0, ColumnSpan: 2},
+			ui.Label{Text: dlg.description(), Row: 0, Column: 0, ColumnSpan: 2},
+			ui.Label{Text: dlg.remaining(), AssignTo: &dlg.remainingLabel, Row: 1, Column: 0, ColumnSpan: 2},
+			ui.Label{Text: dlg.warning(), Row: 2, Column: 0, ColumnSpan: 2},
 			ui.VSpacer{Row: 3, Column: 0, ColumnSpan: 2},
 			ui.HSpacer{Row: 4, Column: 0},
 			ui.PushButton{
@@ -53,8 +54,8 @@ func NewDisconnectedDialog(model *DisconnectedModel) (dlg *DisconnectedDialog, e
 	}
 
 	model.RefreshEvent().Attach(func() {
-		dlg.form.SetTitle(model.Title())
-		dlg.remaining.SetText(model.Remaining())
+		dlg.form.SetTitle(dlg.title())
+		dlg.remainingLabel.SetText(dlg.remaining())
 	})
 
 	err = dlg.ui.Create(nil)
@@ -87,21 +88,23 @@ func (dlg *DisconnectedDialog) RunWithSync(ctx context.Context, responses <-chan
 	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ConnectionAcquired)
 }
 
-// Result returns the result returned by the dialog.
-//
-// Result should be called after the dialog has been closed.
-func (dlg *DisconnectedDialog) Result() int {
-	return dlg.form.Result()
+// title returns the title for the dialog.
+func (dlg *DisconnectedDialog) title() string {
+	return fmt.Sprintf("%s until lease for %s expires", dlg.model.TimeRemaining().String(), dlg.model.ResourceName())
 }
 
-// Cancelled returns true if the dialog was cancelled by the user.
-//
-// Cancelled should be called after the dialog has been closed.
-func (dlg *DisconnectedDialog) Cancelled() bool {
-	switch dlg.Result() {
-	case walk.DlgCmdAbort, walk.DlgCmdNone:
-		return true
-	default:
-		return false
-	}
+// description returns the description for the dialog.
+func (dlg *DisconnectedDialog) description() string {
+	//return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", m.ResourceName(), consumed, m.response.Lease.Limit)
+	return fmt.Sprintf("The lease for %s could not be renewed. This is probably due to a network or server failure.", dlg.model.ResourceName())
+}
+
+// remaining returns the remaining lease time text for the dialog.
+func (dlg *DisconnectedDialog) remaining() string {
+	return fmt.Sprintf("%s will forcibly be shut down in %s, when its lease expires.", dlg.model.program, dlg.model.TimeRemaining().String())
+}
+
+// warning returns the warning text for the view.
+func (dlg *DisconnectedDialog) warning() string {
+	return fmt.Sprintf("Please save your work and close %s before then, or you may lose your work.", dlg.model.program)
 }

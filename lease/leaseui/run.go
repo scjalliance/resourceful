@@ -22,7 +22,7 @@ func Queued(ctx context.Context, icon *Icon, program, consumer string, current g
 // It will return when a connection to the server is re-established or the
 // user has closed the interface.
 func Disconnected(ctx context.Context, icon *Icon, program, consumer string, current lease.Lease, leaseErr error, responses <-chan guardian.Acquisition) (result Result, final lease.Lease, err error) {
-	model := NewDisconnectedModel(current, leaseErr)
+	model := NewConnectionModel(current, leaseErr)
 	result = Sync(ctx, model, responses, ConnectionAcquired)
 	final = model.Lease() // Return the last good lease that was fed into the model
 	return

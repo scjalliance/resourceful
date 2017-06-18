@@ -3,7 +3,6 @@
 package leaseui
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/lxn/walk"
@@ -45,40 +44,19 @@ func (m *QueuedModel) Icon() *Icon {
 	return m.icon
 }
 
-// Title returns the title for the view.
-func (m *QueuedModel) Title() string {
-	return fmt.Sprintf("Unable to launch %s", m.program)
-}
-
-// Description returns the description for the view.
-func (m *QueuedModel) Description() string {
+// Consumed returns the current number of resources that have been consumed.
+func (m *QueuedModel) Consumed() uint {
 	strat := m.response.Lease.Strategy
 	if !strategy.Valid(strat) || strat == strategy.Empty {
 		strat = policy.DefaultStrategy
 	}
 	stats := m.response.Leases.Stats()
-	consumed := stats.Consumed(strat)
-	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", m.ResourceName(), consumed, m.response.Lease.Limit)
+	return stats.Consumed(strat)
 }
 
-// TableCaption returns the caption for the view's data.
-func (m *QueuedModel) TableCaption() string {
-	return "Here's a list of everyone that's using or waiting for a license right now:"
-}
-
-// ResourceName returns the user-friendly name of the resource for the view.
+// ResourceName returns the user-friendly name of the resource.
 func (m *QueuedModel) ResourceName() string {
-	name := m.response.Lease.Environment["resource.name"]
-	if name != "" {
-		return name
-	}
-
-	name = m.response.Lease.Environment["resource.id"]
-	if name != "" {
-		return name
-	}
-
-	name = m.response.Lease.Resource
+	name := m.response.Lease.ResourceName()
 	if name != "" {
 		return name
 	}
