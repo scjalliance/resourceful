@@ -94,6 +94,21 @@ func (ls *Lease) EffectiveRefresh() (interval time.Duration) {
 	return interval
 }
 
+// ResourceName returns the user-friendly name of the resource.
+func (ls *Lease) ResourceName() string {
+	name := ls.Environment["resource.name"]
+	if name != "" {
+		return name
+	}
+
+	name = ls.Environment["resource.id"]
+	if name != "" {
+		return name
+	}
+
+	return ls.Resource
+}
+
 // Subject returns a string identifying the subject of the lease, which
 // includes the resource, consumer and instance.
 func (ls *Lease) Subject() string {
