@@ -4,9 +4,12 @@ package leaseui
 type Result int
 
 const (
+	// Failure is returned when a user interface failed in some unexpected way.
+	Failure Result = iota
+
 	// Success is returned when the objective of the user interface was completed
 	// successfully.
-	Success Result = iota
+	Success
 
 	// UserClosed is returned when a user interface was closed by the user.
 	UserClosed
@@ -16,8 +19,4 @@ const (
 
 	// ContextCancelled is returned when a context is cancelled.
 	ContextCancelled
-
-	// ChannelClosed is returned when the update source for a user interface is
-	// closed.
-	ChannelClosed
 )

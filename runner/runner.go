@@ -2,11 +2,11 @@ package runner
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
@@ -19,8 +19,7 @@ import (
 // It is capable of showing a queued lease dialog to the user if a lease cannot
 // be acquired immediately.
 type Runner struct {
-	program   string
-	args      []string
+	config    Config
 	consumer  string
 	instance  string
 	env       environment.Environment
@@ -29,37 +28,38 @@ type Runner struct {
 	client    *guardian.Client
 	running   bool
 	online    bool
+	warned    bool
 	current   lease.Lease
 	dismissal time.Time
+	ui        *leaseui.Manager
 }
 
 // New creates a new runner for the given program and arguments.
 //
 // If the given set of guardian server addresses is empty the servers will be
 // detected via service discovery.
-func New(program string, args []string, servers []string) (*Runner, error) {
+func New(config Config) (*Runner, error) {
 	r := &Runner{
-		program: program,
-		args:    args,
-		retry:   time.Second * 5,
-		icon:    leaseui.DefaultIcon(),
+		config: config,
+		retry:  time.Second * 5,
+		icon:   leaseui.DefaultIcon(),
 	}
-	if err := r.init(servers); err != nil {
+	if err := r.init(); err != nil {
 		return nil, err
 	}
 	return r, nil
 }
 
-func (r *Runner) init(servers []string) (err error) {
+func (r *Runner) init() (err error) {
 	r.consumer, r.instance, r.env, err = DetectEnvironment()
 	if err != nil {
 		return fmt.Errorf("runner: unable to detect environment: %v", err)
 	}
 
-	if len(servers) == 0 {
+	if len(r.config.Servers) == 0 {
 		r.client, err = guardian.NewClient("resourceful")
 	} else {
-		r.client, err = guardian.NewClientWithServers(servers)
+		r.client, err = guardian.NewClientWithServers(r.config.Servers)
 	}
 	if err != nil {
 		return fmt.Errorf("runner: unable to create resourceful guardian client: %v", err)
@@ -68,15 +68,43 @@ func (r *Runner) init(servers []string) (err error) {
 	return
 }
 
-// SetIcon will change the icon used by the queued lease dialog.
-func (r *Runner) SetIcon(icon *leaseui.Icon) {
-	r.icon = icon
-}
-
 // Run will attempt to acquire an active lease and run the command.
 func (r *Runner) Run(ctx context.Context) (err error) {
 	ctx, shutdown := context.WithCancel(ctx)
-	maintainer := r.client.Maintain(ctx, r.program, r.consumer, r.instance, r.env, r.retry)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	var done = func() {
+		wg.Done()
+		shutdown()
+	}
+
+	r.ui = leaseui.New(leaseui.Config{
+		Icon:     r.config.Icon,
+		Program:  r.config.Program,
+		Consumer: r.consumer,
+	})
+
+	var runErr error
+	go func() {
+		runErr = r.run(ctx)
+		done()
+	}()
+
+	var uiErr error
+	uiErr = r.ui.Run(ctx, shutdown) // Must run on the main thread
+	done()
+
+	wg.Wait()
+
+	if runErr != nil {
+		return runErr
+	}
+	return uiErr
+}
+
+func (r *Runner) run(ctx context.Context) (err error) {
+	ctx, shutdown := context.WithCancel(ctx)
+	maintainer := r.client.Maintain(ctx, r.config.Program, r.consumer, r.instance, r.env, r.retry)
 	defer shutdown() // Make sure the lease maintainer is shut down if there's an error
 
 	ch := maintainer.Listen(1)
@@ -87,18 +115,30 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 			return nil
 		}
 
-		if response.Err != nil {
-			r.setOnline(false)
-			err = r.handleError(ctx, ch, response.Err, shutdown)
-		} else {
+		/*
+			err = r.handleDowngrade()
+			if err != nil {
+				return
+			}
+		*/
+
+		if response.Err == nil {
 			r.setOnline(true)
 			r.current = response.Lease
+		} else {
+			r.setOnline(false)
+		}
 
+		r.ui.Update(r.current, response)
+
+		if response.Err != nil {
+			err = r.handleError(ctx, response, shutdown)
+		} else {
 			switch response.Lease.Status {
 			case lease.Active:
 				err = r.handleActive(ctx, shutdown)
 			case lease.Queued:
-				err = r.handleQueued(ctx, response, ch, shutdown)
+				err = r.handleQueued(ctx, shutdown)
 			default:
 				err = fmt.Errorf("unexpected lease status: \"%s\"", response.Lease.Status)
 			}
@@ -111,20 +151,16 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 }
 
 // handleError processes lease retrieval errors.
-func (r *Runner) handleError(ctx context.Context, ch <-chan guardian.Acquisition, err error, shutdown context.CancelFunc) error {
+func (r *Runner) handleError(ctx context.Context, response guardian.Acquisition, shutdown context.CancelFunc) error {
 	if !r.running {
-		return err
+		return response.Err
 	}
 
-	if r.current.Status != lease.Active {
-		return errors.New("unexpected lease state when program is running")
-	}
-
-	log.Printf("Unable to renew active lease due to error: %v", err)
+	log.Printf("Lease renewal failed: %v", response.Err)
 
 	now := time.Now()
 	if r.current.Expired(now) {
-		log.Printf("Lease has expired. Shutting down %s", r.program)
+		log.Printf("Lease has expired. Shutting down %s", r.config.Program)
 		shutdown()
 		return nil
 	}
@@ -134,42 +170,74 @@ func (r *Runner) handleError(ctx context.Context, ch <-chan guardian.Acquisition
 
 	log.Printf("Lease time remaining: %s", remaining.String())
 
-	if !shouldWarn(r.current, now, r.dismissal) {
-		return nil
-	}
-
-	monCtx, monCancel := context.WithTimeout(ctx, remaining)
-	defer monCancel()
-
-	result, current, err := leaseui.Disconnected(monCtx, r.icon, r.program, r.consumer, r.current, err, ch)
-	if err != nil {
-		return err
-	}
-
-	r.current = current
-
-	switch result {
-	case leaseui.Success:
-		// The server came back online
-		r.setOnline(true)
-	case leaseui.UserCancelled, leaseui.UserClosed:
-		// The user intentionally stopped waiting
-		r.dismissal = time.Now()
-	case leaseui.ChannelClosed:
-		// The lease maintainer is shutting down
-	case leaseui.ContextCancelled:
-		// Either the system is shutting down or the lease expired
-		if r.current.Expired(now) {
-			log.Printf("Lease has expired. Shutting down %s", r.program)
-			shutdown()
-		}
+	if shouldWarn(r.current, now, r.dismissal) {
+		r.ui.Change(leaseui.Disconnected, nil)
 	}
 
 	return nil
 }
 
+/*
+// handleDowngrade will return an error if a lease was downgraded unexpectedly.
+func (r *Runner) handleDowngrade() error {
+	if !r.running {
+		return nil
+	}
+
+	if r.current.Status == lease.Active {
+		return nil
+	}
+
+	// Check whether our lease got downgraded
+	if r.warned {
+		return fmt.Errorf("Lease was downgraded after the server came back online. Shutting down %s", r.program)
+	}
+
+	return fmt.Errorf("Lease was downgraded unexpectedly. Shutting down %s", r.program)
+}
+*/
+
+// handleRestored processes restoration after a connection to the server has
+// been restored.
+/*
+func (r *Runner) handleRestored(ctx context.Context, ch <-chan guardian.Acquisition, shutdown context.CancelFunc) error {
+	if !r.running {
+		return nil
+	}
+
+	// Check whether our lease got downgraded
+	if r.current.Status != lease.Active {
+		log.Printf("Lease was downgraded after the server came back online. Shutting down %s", r.program)
+		shutdown()
+		return nil
+	}
+
+	// Tell the user that the connection has been restored.
+	var result leaseui.Result
+	var err error
+	result, r.current, err = leaseui.Connected(ctx, r.icon, r.program, r.consumer, r.current, err, ch)
+
+	// Check whether our lease got downgraded
+	if r.current.Status != lease.Active {
+		log.Printf("Lease was downgraded unexpectedly. Shutting down %s", r.program)
+		shutdown()
+		return nil
+	}
+
+	// If the dialog returned success it means that the server went offline
+	// again. If that's the case then we shoul continue with our error loop.
+	// If the user closed the dialog or the system is shutting down then we
+	// exit.
+	if result != leaseui.Success {
+		return nil
+	}
+}
+*/
+
 // handleActive processes active lease acquisitions.
 func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc) (err error) {
+	r.ui.Change(leaseui.None, nil)
+
 	if r.running {
 		if !r.online {
 			log.Printf("Lease recovered")
@@ -185,26 +253,38 @@ func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc
 }
 
 // handleQueued processes queued lease acquisitions.
-func (r *Runner) handleQueued(ctx context.Context, response guardian.Acquisition, ch <-chan guardian.Acquisition, shutdown context.CancelFunc) (err error) {
+func (r *Runner) handleQueued(ctx context.Context, shutdown context.CancelFunc) (err error) {
 	if r.running {
 		// TODO: When a lease is downgraded to released or queued status
-		//       show the lease UI again.
-		log.Printf("Lease lost")
+		//       show the lease UI again?
+		log.Printf("Lease downgraded")
+		shutdown()
 		return nil
 	}
 
 	log.Printf("Lease queued")
 
-	result, response, err := leaseui.Queued(ctx, r.icon, r.program, r.consumer, response, ch)
-	if err != nil || result != leaseui.Success {
-		// The user intentionally stopped waiting or something went wrong
-		shutdown()
-		return
-	}
+	r.ui.Change(leaseui.Queued, func(result leaseui.Result, err error) {
+		switch result {
+		case leaseui.UserCancelled, leaseui.UserClosed:
+			log.Printf("User stopped waiting for an active lease")
+			shutdown()
+		}
+	})
 
-	r.current = response.Lease
+	/*
+		result, response, err := leaseui.Queued(ctx, r.icon, r.program, r.consumer, response, ch)
+		if err != nil || result != leaseui.Success {
+			// The user intentionally stopped waiting or something went wrong
+			shutdown()
+			return
+		}
 
-	return r.execute(ctx, shutdown)
+		r.current = response.Lease
+
+		return r.execute(ctx, shutdown)
+	*/
+	return nil
 }
 
 // execute will start the command in its own child process. It ensures that
@@ -219,9 +299,9 @@ func (r *Runner) execute(ctx context.Context, completion context.CancelFunc) (er
 		panic("Command is already running")
 	}
 
-	log.Printf("Executing %s %s", r.program, strings.Join(r.args, " "))
+	log.Printf("Executing %s %s", r.config.Program, strings.Join(r.config.Args, " "))
 
-	cmd := exec.CommandContext(ctx, r.program, r.args...)
+	cmd := exec.CommandContext(ctx, r.config.Program, r.config.Args...)
 	err = cmd.Start()
 	if err != nil {
 		return

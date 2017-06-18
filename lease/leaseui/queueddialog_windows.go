@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/lxn/walk"
-	"github.com/scjalliance/resourceful/guardian"
 
 	ui "github.com/lxn/walk/declarative"
 )
@@ -20,13 +19,13 @@ type QueuedDialog struct {
 }
 
 // NewQueuedDialog returns a new queued lease dialog with the given view model.
-func NewQueuedDialog(model *QueuedModel) (dlg *QueuedDialog, err error) {
+func NewQueuedDialog(icon *Icon, model *QueuedModel) (dlg *QueuedDialog, err error) {
 	dlg = &QueuedDialog{
 		model: model,
 	}
 
 	dlg.ui = &ui.Dialog{
-		Icon:     (*walk.Icon)(model.Icon()),
+		Icon:     (*walk.Icon)(icon),
 		Title:    dlg.title(),
 		MinSize:  ui.Size{Width: 600, Height: 400},
 		Layout:   ui.Grid{},
@@ -87,18 +86,20 @@ func (dlg *QueuedDialog) Run(ctx context.Context) int {
 // RunWithSync returns the result of the dialog. If the context was cancelled,
 // an active lease was acquired or the channel was closed it will return
 // walk.DlgCmdCancel.
+/*
 func (dlg *QueuedDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
 	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ActiveLeaseAcquired)
 }
+*/
 
 // title returns the title for the dialog.
 func (dlg *QueuedDialog) title() string {
-	return fmt.Sprintf("Unable to launch %s", dlg.model.program)
+	return fmt.Sprintf("Unable to launch %s", dlg.model.Program)
 }
 
 // description returns the description for the dialog.
 func (dlg *QueuedDialog) description() string {
-	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", dlg.model.ResourceName(), dlg.model.Consumed(), dlg.model.response.Lease.Limit)
+	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", dlg.model.ResourceName(), dlg.model.Consumed(), dlg.model.acquisition.Lease.Limit)
 }
 
 // tableCaption returns the caption for the table.

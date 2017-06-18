@@ -33,7 +33,14 @@ func run(args []string) {
 		shutdown()
 	}()
 
-	err := runner.RunWithIcon(ctx, program, args, servers, icon)
+	config := runner.Config{
+		Icon:    icon,
+		Program: program,
+		Args:    args,
+		Servers: servers,
+	}
+
+	err := runner.Run(ctx, config)
 	if err != nil {
 		runError(err)
 	}

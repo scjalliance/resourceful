@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/lxn/walk"
-	"github.com/scjalliance/resourceful/guardian"
 
 	ui "github.com/lxn/walk/declarative"
 )
@@ -22,7 +21,7 @@ type DisconnectedDialog struct {
 
 // NewDisconnectedDialog returns a new connection dialog with the given view
 // model.
-func NewDisconnectedDialog(model *ConnectionModel) (dlg *DisconnectedDialog, err error) {
+func NewDisconnectedDialog(icon *Icon, model *ConnectionModel) (dlg *DisconnectedDialog, err error) {
 	dlg = &DisconnectedDialog{
 		model: model,
 	}
@@ -30,7 +29,7 @@ func NewDisconnectedDialog(model *ConnectionModel) (dlg *DisconnectedDialog, err
 	size := ui.Size{Width: 500, Height: 200}
 
 	dlg.ui = &ui.Dialog{
-		Icon:     (*walk.Icon)(model.Icon()),
+		Icon:     (*walk.Icon)(icon),
 		Title:    dlg.title(),
 		MinSize:  size,
 		MaxSize:  size,
@@ -84,9 +83,11 @@ func (dlg *DisconnectedDialog) Run(ctx context.Context) int {
 //
 // RunWithSync returns the result of the dialog. If an active lease was acquired
 // it will return Success.
+/*
 func (dlg *DisconnectedDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
-	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ConnectionAcquired)
+	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ConnectionAcquiredAndLeaseActive)
 }
+*/
 
 // title returns the title for the dialog.
 func (dlg *DisconnectedDialog) title() string {
@@ -101,10 +102,10 @@ func (dlg *DisconnectedDialog) description() string {
 
 // remaining returns the remaining lease time text for the dialog.
 func (dlg *DisconnectedDialog) remaining() string {
-	return fmt.Sprintf("%s will forcibly be shut down in %s, when its lease expires.", dlg.model.program, dlg.model.TimeRemaining().String())
+	return fmt.Sprintf("%s will forcibly be shut down in %s, when its lease expires.", dlg.model.Program, dlg.model.TimeRemaining().String())
 }
 
 // warning returns the warning text for the view.
 func (dlg *DisconnectedDialog) warning() string {
-	return fmt.Sprintf("Please save your work and close %s before then, or you may lose your work.", dlg.model.program)
+	return fmt.Sprintf("Please save your work and close %s before then, or you may lose your work.", dlg.model.Program)
 }

@@ -1,9 +1,13 @@
 package leaseui
 
-import "github.com/scjalliance/resourceful/guardian"
+import (
+	"github.com/scjalliance/resourceful/guardian"
+	"github.com/scjalliance/resourceful/lease"
+)
 
 // Model defines the functions common to all view models.
 type Model interface {
-	Update(response guardian.Acquisition)
+	Update(ls lease.Lease, acquisition guardian.Acquisition)
 	Refresh()
+	Close()
 }

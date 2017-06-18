@@ -3,6 +3,7 @@
 package leaseui
 
 import (
+	"sync"
 	"time"
 
 	"github.com/lxn/walk"
@@ -17,80 +18,99 @@ import (
 // QueuedModel is not threadsafe. Its operation should be managed by a single
 // goroutine, such as the Sync function.
 type QueuedModel struct {
+	Config
+
+	mutex sync.RWMutex
 	walk.TableModelBase
 	walk.SorterBase
-	sortColumn int
-	sortOrder  walk.SortOrder
-	icon       *Icon
-	program    string
-	consumer   string
-	response   guardian.Acquisition
+	sortColumn  int
+	sortOrder   walk.SortOrder
+	acquisition guardian.Acquisition
+	closed      bool
 }
 
 // NewQueuedModel returns a queued lease dialog view model.
-func NewQueuedModel(icon *Icon, program, consumer string, response guardian.Acquisition) *QueuedModel {
+func NewQueuedModel(config Config, acquisition guardian.Acquisition) *QueuedModel {
 	m := &QueuedModel{
-		icon:     icon,
-		program:  program,
-		consumer: consumer,
-		response: response,
+		Config:      config,
+		acquisition: acquisition,
 	}
 	m.PublishRowsReset()
 	return m
 }
 
-// Icon returns the icon for the view.
-func (m *QueuedModel) Icon() *Icon {
-	return m.icon
-}
-
 // Consumed returns the current number of resources that have been consumed.
 func (m *QueuedModel) Consumed() uint {
-	strat := m.response.Lease.Strategy
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	strat := m.acquisition.Lease.Strategy
 	if !strategy.Valid(strat) || strat == strategy.Empty {
 		strat = policy.DefaultStrategy
 	}
-	stats := m.response.Leases.Stats()
+	stats := m.acquisition.Leases.Stats()
 	return stats.Consumed(strat)
 }
 
 // ResourceName returns the user-friendly name of the resource.
 func (m *QueuedModel) ResourceName() string {
-	name := m.response.Lease.ResourceName()
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	name := m.acquisition.Lease.ResourceName()
 	if name != "" {
 		return name
 	}
 
-	return m.program
-}
-
-// Response returns the current content of the model.
-func (m *QueuedModel) Response() guardian.Acquisition {
-	return m.response
+	return m.Program
 }
 
 // Update will replace the current model's lease response with the one provided.
-func (m *QueuedModel) Update(response guardian.Acquisition) {
-	m.response = response
+func (m *QueuedModel) Update(ls lease.Lease, acquisition guardian.Acquisition) {
+	m.mutex.Lock()
+	m.acquisition = acquisition
+	m.mutex.Unlock()
+
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	if m.closed {
+		return
+	}
+
 	// TODO: Intelligently compare new data to old, and update invidivual rows
 	m.PublishRowsReset()
 }
 
 // Refresh will update all of the rows in the lease dialog.
 func (m *QueuedModel) Refresh() {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	if m.closed {
+		return
+	}
+
 	for r := 0; r < m.RowCount(); r++ {
 		m.PublishRowChanged(r)
 	}
 }
 
+// Close will prevent the model from broadcasting updates.
+func (m *QueuedModel) Close() {
+	m.mutex.Lock()
+	m.mutex.Unlock()
+	m.closed = true
+}
+
 // RowCount returns the number of rows in the model.
 func (m *QueuedModel) RowCount() int {
-	return len(m.response.Leases)
+	return len(m.acquisition.Leases)
 }
 
 // Value returns the value for the cell at the given row and column.
 func (m *QueuedModel) Value(row, col int) interface{} {
-	ls := m.response.Leases[row]
+	ls := m.acquisition.Leases[row]
 
 	switch col {
 	case 0:
@@ -110,7 +130,7 @@ func (m *QueuedModel) Value(row, col int) interface{} {
 		if ls.Decay == 0 {
 			return ""
 		}
-		if ls.Consumer == m.consumer {
+		if ls.Consumer == m.Consumer {
 			// There is no decay period for leases belonging to the same consumer.
 			return ""
 		}
