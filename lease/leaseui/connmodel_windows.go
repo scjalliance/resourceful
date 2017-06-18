@@ -44,7 +44,7 @@ func (m *ConnectionModel) Icon() *Icon {
 
 // Title returns the title for the view.
 func (m *ConnectionModel) Title() string {
-	return fmt.Sprintf("License for %s has been lost", m.program)
+	return fmt.Sprintf("%s until lease for %s expires", m.TimeRemaining().String(), m.program)
 }
 
 // Description returns the description for the view.
@@ -55,9 +55,7 @@ func (m *ConnectionModel) Description() string {
 
 // Remaining returns the remaining lease time text for the view.
 func (m *ConnectionModel) Remaining() string {
-	now := time.Now().Round(time.Second)
-	remaining := m.current.ExpirationTime().Round(time.Second).Sub(now)
-	return fmt.Sprintf("%s will forcibly be shut down in %s, when its lease expires.", m.program, remaining.String())
+	return fmt.Sprintf("%s will forcibly be shut down in %s, when its lease expires.", m.program, m.TimeRemaining().String())
 }
 
 // Warning returns the warning text for the view.
@@ -91,4 +89,15 @@ func (m *ConnectionModel) RefreshEvent() *walk.Event {
 // Refresh will update the connection timeout information.
 func (m *ConnectionModel) Refresh() {
 	m.refreshPublisher.Publish()
+}
+
+// TimeRemaining returns the time remaining until the current lease expires,
+// rounded to the nearest whole second.
+func (m *ConnectionModel) TimeRemaining() (remaining time.Duration) {
+	now := time.Now().Round(time.Second)
+	expiration := m.current.ExpirationTime().Round(time.Second)
+	if now.After(expiration) {
+		return
+	}
+	return expiration.Sub(now)
 }
