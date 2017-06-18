@@ -67,9 +67,9 @@ func runDialogWithSync(ctx context.Context, form *walk.Dialog, model Model, resp
 	return
 }
 
-// WaitForActive will create and manage a queued lease user interface. It will
+// Queued will create and manage a queued lease user interface. It will
 // return when an active lease is acquired or the user has closed the interface.
-func WaitForActive(ctx context.Context, icon *Icon, program, consumer string, current guardian.Acquisition, responses <-chan guardian.Acquisition) (result Result, final guardian.Acquisition, err error) {
+func Queued(ctx context.Context, icon *Icon, program, consumer string, current guardian.Acquisition, responses <-chan guardian.Acquisition) (result Result, final guardian.Acquisition, err error) {
 	// Create a view model that will be consumed by the queued lease dialog.
 	// Prime it with the most recent response that was received.
 	model := NewQueuedModel(icon, program, consumer, current)
@@ -94,10 +94,10 @@ func WaitForActive(ctx context.Context, icon *Icon, program, consumer string, cu
 	return
 }
 
-// MonitorConnection will create and manage a connection monitor user interface.
+// Disconnected will create and manage a disconnected user interface.
 // It will return when a connection to the server is re-established or the
 // user has closed the interface.
-func MonitorConnection(ctx context.Context, icon *Icon, program, consumer string, current lease.Lease, leaseErr error, responses <-chan guardian.Acquisition) (result Result, final lease.Lease, err error) {
+func Disconnected(ctx context.Context, icon *Icon, program, consumer string, current lease.Lease, leaseErr error, responses <-chan guardian.Acquisition) (result Result, final lease.Lease, err error) {
 	// Create a view model that will be consumed by the connection dialog.
 	// Prime it with the most recent response that was received.
 	model := NewDisconnectedModel(icon, program, consumer, current, leaseErr)

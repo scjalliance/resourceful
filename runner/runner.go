@@ -141,7 +141,7 @@ func (r *Runner) handleError(ctx context.Context, ch <-chan guardian.Acquisition
 	monCtx, monCancel := context.WithTimeout(ctx, remaining)
 	defer monCancel()
 
-	result, current, err := leaseui.MonitorConnection(monCtx, r.icon, r.program, r.consumer, r.current, err, ch)
+	result, current, err := leaseui.Disconnected(monCtx, r.icon, r.program, r.consumer, r.current, err, ch)
 	if err != nil {
 		return err
 	}
@@ -195,7 +195,7 @@ func (r *Runner) handleQueued(ctx context.Context, response guardian.Acquisition
 
 	log.Printf("Lease queued")
 
-	result, response, err := leaseui.WaitForActive(ctx, r.icon, r.program, r.consumer, response, ch)
+	result, response, err := leaseui.Queued(ctx, r.icon, r.program, r.consumer, response, ch)
 	if err != nil || result != leaseui.Success {
 		// The user intentionally stopped waiting or something went wrong
 		shutdown()
