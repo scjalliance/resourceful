@@ -11,18 +11,18 @@ import (
 	ui "github.com/lxn/walk/declarative"
 )
 
-// ConnectionDialog is a lost connection dialog.
-type ConnectionDialog struct {
+// DisconnectedDialog is a lost connection dialog.
+type DisconnectedDialog struct {
 	ui        *ui.Dialog
 	form      *walk.Dialog
 	remaining *walk.Label
-	model     *ConnectionModel
+	model     *DisconnectedModel
 }
 
-// NewConnectionDialog returns a new connection dialog with the given view
+// NewDisconnectedDialog returns a new connection dialog with the given view
 // model.
-func NewConnectionDialog(model *ConnectionModel) (dlg *ConnectionDialog, err error) {
-	dlg = &ConnectionDialog{
+func NewDisconnectedDialog(model *DisconnectedModel) (dlg *DisconnectedDialog, err error) {
+	dlg = &DisconnectedDialog{
 		model: model,
 	}
 
@@ -62,14 +62,14 @@ func NewConnectionDialog(model *ConnectionModel) (dlg *ConnectionDialog, err err
 	return
 }
 
-// Run will display the connection dialog.
+// Run will display the disconnected dialog.
 //
 // Run blocks until the dialog is closed. The dialog can be closed by the user
 // or by cancelling the provided context.
 //
 // Run returns the result of the dialog. If the context was cancelled run will
 // return walk.DlgCmdCancel.
-func (dlg *ConnectionDialog) Run(ctx context.Context) int {
+func (dlg *DisconnectedDialog) Run(ctx context.Context) int {
 	return runDialog(ctx, dlg.form)
 }
 
@@ -83,21 +83,21 @@ func (dlg *ConnectionDialog) Run(ctx context.Context) int {
 //
 // RunWithSync returns the result of the dialog. If an active lease was acquired
 // it will return Success.
-func (dlg *ConnectionDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
+func (dlg *DisconnectedDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
 	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ConnectionAcquired)
 }
 
 // Result returns the result returned by the dialog.
 //
 // Result should be called after the dialog has been closed.
-func (dlg *ConnectionDialog) Result() int {
+func (dlg *DisconnectedDialog) Result() int {
 	return dlg.form.Result()
 }
 
 // Cancelled returns true if the dialog was cancelled by the user.
 //
 // Cancelled should be called after the dialog has been closed.
-func (dlg *ConnectionDialog) Cancelled() bool {
+func (dlg *DisconnectedDialog) Cancelled() bool {
 	switch dlg.Result() {
 	case walk.DlgCmdAbort, walk.DlgCmdNone:
 		return true

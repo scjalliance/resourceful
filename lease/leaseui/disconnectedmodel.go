@@ -7,23 +7,23 @@ import (
 	"github.com/scjalliance/resourceful/lease"
 )
 
-// ConnectionModel holds lease information while waiting for a lost
+// DisconnectedModel holds lease information while waiting for a lost
 // connection to be recovered.
-type ConnectionModel struct {
+type DisconnectedModel struct {
 	current lease.Lease // The last successful lease acquisition
 	err     error       // The error from the last attempted acquisition
 }
 
-// NewConnectionModel returns a connection model.
-func NewConnectionModel(current lease.Lease, err error) *ConnectionModel {
-	return &ConnectionModel{
+// NewDisconnectedModel returns a connection model.
+func NewDisconnectedModel(current lease.Lease, err error) *DisconnectedModel {
+	return &DisconnectedModel{
 		current: current,
 		err:     err,
 	}
 }
 
 // Update will update the model for the given response.
-func (m *ConnectionModel) Update(response guardian.Acquisition) {
+func (m *DisconnectedModel) Update(response guardian.Acquisition) {
 	if response.Err == nil {
 		m.current = response.Lease
 	}
@@ -31,14 +31,14 @@ func (m *ConnectionModel) Update(response guardian.Acquisition) {
 }
 
 // Refresh is a no-op.
-func (m *ConnectionModel) Refresh() {}
+func (m *DisconnectedModel) Refresh() {}
 
 // Lease returns the current content of the model.
-func (m *ConnectionModel) Lease() lease.Lease {
+func (m *DisconnectedModel) Lease() lease.Lease {
 	return m.current
 }
 
 // Error returns the error from the last lease response.
-func (m *ConnectionModel) Error() error {
+func (m *DisconnectedModel) Error() error {
 	return m.err
 }

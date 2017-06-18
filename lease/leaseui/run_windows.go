@@ -100,10 +100,10 @@ func WaitForActive(ctx context.Context, icon *Icon, program, consumer string, cu
 func MonitorConnection(ctx context.Context, icon *Icon, program, consumer string, current lease.Lease, leaseErr error, responses <-chan guardian.Acquisition) (result Result, final lease.Lease, err error) {
 	// Create a view model that will be consumed by the connection dialog.
 	// Prime it with the most recent response that was received.
-	model := NewConnectionModel(icon, program, consumer, current, leaseErr)
+	model := NewDisconnectedModel(icon, program, consumer, current, leaseErr)
 
-	// Create the connection dialog.
-	dlg, err := NewConnectionDialog(model)
+	// Create the disconnected dialog.
+	dlg, err := NewDisconnectedDialog(model)
 	if err != nil {
 		err = fmt.Errorf("unable to create connection user interface: %v", err)
 		return
