@@ -72,10 +72,10 @@ func runDialogWithSync(ctx context.Context, form *walk.Dialog, model Model, resp
 func WaitForActive(ctx context.Context, icon *Icon, program, consumer string, current guardian.Acquisition, responses <-chan guardian.Acquisition) (result Result, final guardian.Acquisition, err error) {
 	// Create a view model that will be consumed by the queued lease dialog.
 	// Prime it with the most recent response that was received.
-	model := NewLeaseModel(icon, program, consumer, current)
+	model := NewQueuedModel(icon, program, consumer, current)
 
 	// Create the queued lease dialog.
-	dlg, err := NewLeaseDialog(model)
+	dlg, err := NewQueuedDialog(model)
 	if err != nil {
 		err = fmt.Errorf("unable to create lease status user interface: %v", err)
 		return

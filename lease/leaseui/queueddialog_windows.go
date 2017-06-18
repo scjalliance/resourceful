@@ -11,16 +11,16 @@ import (
 	ui "github.com/lxn/walk/declarative"
 )
 
-// LeaseDialog is a queued lease dialog.
-type LeaseDialog struct {
+// QueuedDialog is a queued lease dialog.
+type QueuedDialog struct {
 	ui    *ui.Dialog
 	form  *walk.Dialog
-	model *LeaseModel
+	model *QueuedModel
 }
 
-// NewLeaseDialog returns a new queued lease dialog with the given view model.
-func NewLeaseDialog(model *LeaseModel) (dlg *LeaseDialog, err error) {
-	dlg = &LeaseDialog{
+// NewQueuedDialog returns a new queued lease dialog with the given view model.
+func NewQueuedDialog(model *QueuedModel) (dlg *QueuedDialog, err error) {
+	dlg = &QueuedDialog{
 		model: model,
 	}
 
@@ -71,7 +71,7 @@ func NewLeaseDialog(model *LeaseModel) (dlg *LeaseDialog, err error) {
 //
 // Run returns the result of the dialog. If the context was cancelled run will
 // return walk.DlgCmdCancel.
-func (dlg *LeaseDialog) Run(ctx context.Context) int {
+func (dlg *QueuedDialog) Run(ctx context.Context) int {
 	return runDialog(ctx, dlg.form)
 }
 
@@ -86,21 +86,21 @@ func (dlg *LeaseDialog) Run(ctx context.Context) int {
 // RunWithSync returns the result of the dialog. If the context was cancelled,
 // an active lease was acquired or the channel was closed it will return
 // walk.DlgCmdCancel.
-func (dlg *LeaseDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
+func (dlg *QueuedDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
 	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ActiveLeaseAcquired)
 }
 
 // Result returns the result returned by the dialog.
 //
 // Result should be called after the dialog has been closed.
-func (dlg *LeaseDialog) Result() int {
+func (dlg *QueuedDialog) Result() int {
 	return dlg.form.Result()
 }
 
 // Cancelled returns true if the dialog was cancelled by the user.
 //
 // Cancelled should be called after the dialog has been closed.
-func (dlg *LeaseDialog) Cancelled() bool {
+func (dlg *QueuedDialog) Cancelled() bool {
 	switch dlg.Result() {
 	case walk.DlgCmdAbort, walk.DlgCmdNone:
 		return true

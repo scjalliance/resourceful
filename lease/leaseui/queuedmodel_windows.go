@@ -13,11 +13,11 @@ import (
 	"github.com/scjalliance/resourceful/strategy"
 )
 
-// LeaseModel is a view model for the queued lease dialog.
+// QueuedModel is a view model for the queued lease dialog.
 //
-// LeaseModel is not threadsafe. Its operation should be managed by a single
+// QueuedModel is not threadsafe. Its operation should be managed by a single
 // goroutine, such as the Sync function.
-type LeaseModel struct {
+type QueuedModel struct {
 	walk.TableModelBase
 	walk.SorterBase
 	sortColumn int
@@ -28,9 +28,9 @@ type LeaseModel struct {
 	response   guardian.Acquisition
 }
 
-// NewLeaseModel returns a queued lease dialog view model.
-func NewLeaseModel(icon *Icon, program, consumer string, response guardian.Acquisition) *LeaseModel {
-	m := &LeaseModel{
+// NewQueuedModel returns a queued lease dialog view model.
+func NewQueuedModel(icon *Icon, program, consumer string, response guardian.Acquisition) *QueuedModel {
+	m := &QueuedModel{
 		icon:     icon,
 		program:  program,
 		consumer: consumer,
@@ -41,17 +41,17 @@ func NewLeaseModel(icon *Icon, program, consumer string, response guardian.Acqui
 }
 
 // Icon returns the icon for the view.
-func (m *LeaseModel) Icon() *Icon {
+func (m *QueuedModel) Icon() *Icon {
 	return m.icon
 }
 
 // Title returns the title for the view.
-func (m *LeaseModel) Title() string {
+func (m *QueuedModel) Title() string {
 	return fmt.Sprintf("Unable to launch %s", m.program)
 }
 
 // Description returns the description for the view.
-func (m *LeaseModel) Description() string {
+func (m *QueuedModel) Description() string {
 	strat := m.response.Lease.Strategy
 	if !strategy.Valid(strat) || strat == strategy.Empty {
 		strat = policy.DefaultStrategy
@@ -62,12 +62,12 @@ func (m *LeaseModel) Description() string {
 }
 
 // TableCaption returns the caption for the view's data.
-func (m *LeaseModel) TableCaption() string {
+func (m *QueuedModel) TableCaption() string {
 	return "Here's a list of everyone that's using or waiting for a license right now:"
 }
 
 // ResourceName returns the user-friendly name of the resource for the view.
-func (m *LeaseModel) ResourceName() string {
+func (m *QueuedModel) ResourceName() string {
 	name := m.response.Lease.Environment["resource.name"]
 	if name != "" {
 		return name
@@ -87,31 +87,31 @@ func (m *LeaseModel) ResourceName() string {
 }
 
 // Response returns the current content of the model.
-func (m *LeaseModel) Response() guardian.Acquisition {
+func (m *QueuedModel) Response() guardian.Acquisition {
 	return m.response
 }
 
 // Update will replace the current model's lease response with the one provided.
-func (m *LeaseModel) Update(response guardian.Acquisition) {
+func (m *QueuedModel) Update(response guardian.Acquisition) {
 	m.response = response
 	// TODO: Intelligently compare new data to old, and update invidivual rows
 	m.PublishRowsReset()
 }
 
 // Refresh will update all of the rows in the lease dialog.
-func (m *LeaseModel) Refresh() {
+func (m *QueuedModel) Refresh() {
 	for r := 0; r < m.RowCount(); r++ {
 		m.PublishRowChanged(r)
 	}
 }
 
 // RowCount returns the number of rows in the model.
-func (m *LeaseModel) RowCount() int {
+func (m *QueuedModel) RowCount() int {
 	return len(m.response.Leases)
 }
 
 // Value returns the value for the cell at the given row and column.
-func (m *LeaseModel) Value(row, col int) interface{} {
+func (m *QueuedModel) Value(row, col int) interface{} {
 	ls := m.response.Leases[row]
 
 	switch col {
