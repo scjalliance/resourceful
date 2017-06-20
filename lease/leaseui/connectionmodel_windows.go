@@ -17,7 +17,9 @@ import (
 type ConnectionModel struct {
 	Config
 	lease lease.Lease // The last successful lease acquisition
+	err   error       // The last connection error received
 
+	updatePublisher  walk.EventPublisher
 	refreshPublisher walk.EventPublisher
 }
 
@@ -45,14 +47,26 @@ func (m *ConnectionModel) Lease() lease.Lease {
 	return m.lease
 }
 
+// Error returns the last connection error.
+func (m *ConnectionModel) Error() error {
+	return m.err
+}
+
 // Update will replace the current model's lease response with the one provided.
 func (m *ConnectionModel) Update(ls lease.Lease, acquisition guardian.Acquisition) {
 	m.lease = ls
+	m.err = acquisition.Err
+	m.updatePublisher.Publish()
 }
 
 // RefreshEvent returns the connection refresh event.
 func (m *ConnectionModel) RefreshEvent() *walk.Event {
 	return m.refreshPublisher.Event()
+}
+
+// UpdateEvent returns the connection update event.
+func (m *ConnectionModel) UpdateEvent() *walk.Event {
+	return m.updatePublisher.Event()
 }
 
 // Refresh will update the connection timeout information.
