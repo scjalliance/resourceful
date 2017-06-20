@@ -6,11 +6,12 @@ import (
 	"log"
 	"os"
 
+	"github.com/scjalliance/resourceful/lease/leaseui"
 	"github.com/scjalliance/resourceful/runner"
 )
 
 func runError(err error) {
-	msgBox("resourceful run error", err.Error())
+	leaseui.Notify("resourceful run error", err.Error())
 	os.Exit(2)
 }
 
