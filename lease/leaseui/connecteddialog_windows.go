@@ -66,23 +66,6 @@ func (dlg *ConnectedDialog) Run(ctx context.Context) int {
 	return runDialog(ctx, dlg.form)
 }
 
-// RunWithSync will display the connected dialog. As long as the dialog is
-// running its view model will be synchronized with the responses received
-// on the provided channel.
-//
-// RunWithSync blocks until the dialog is closed. The dialog will be closed when
-// a connection error occurs, an inactive lease is acquired from the channel,
-// or the channel is closed. The dialog can also be closed by the user or by
-// cancelling the provided context.
-//
-// RunWithSync returns the result of the dialog. If a connection error occurs
-// or an inactive lease is acquired it will return Success.
-/*
-func (dlg *ConnectedDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
-	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ConnectionErrorOrLeaseLost)
-}
-*/
-
 // title returns the title for the dialog.
 func (dlg *ConnectedDialog) title() string {
 	return "Connection Restored"

@@ -75,23 +75,6 @@ func (dlg *QueuedDialog) Run(ctx context.Context) int {
 	return runDialog(ctx, dlg.form)
 }
 
-// RunWithSync will display the queued lease dialog. As long as the dialog is
-// running its view model will be synchronized with the responses received
-// on the provided channel.
-//
-// RunWithSync blocks until the dialog is closed. The dialog will be closed when
-// an active lease is acquired from the channel or the channel is closed. The
-// dialog can also be closed by the user or by cancelling the provided context.
-//
-// RunWithSync returns the result of the dialog. If the context was cancelled,
-// an active lease was acquired or the channel was closed it will return
-// walk.DlgCmdCancel.
-/*
-func (dlg *QueuedDialog) RunWithSync(ctx context.Context, responses <-chan guardian.Acquisition) (result Result) {
-	return runDialogWithSync(ctx, dlg.form, dlg.model, responses, ActiveLeaseAcquired)
-}
-*/
-
 // title returns the title for the dialog.
 func (dlg *QueuedDialog) title() string {
 	return fmt.Sprintf("Unable to launch %s", dlg.model.Program)
