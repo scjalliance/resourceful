@@ -71,12 +71,12 @@ func (dlg *ConnectedDialog) title() string {
 	return "Connection Restored"
 }
 
-// description returns the condition text for the dialog.
+// condition returns the condition text for the dialog.
 func (dlg *ConnectedDialog) condition() string {
 	return "The connection to the server has been restored."
 }
 
-// description returns the risk text for the dialog.
+// risk returns the risk text for the dialog.
 func (dlg *ConnectedDialog) risk() string {
 	return "Your work is no longer at risk."
 }
