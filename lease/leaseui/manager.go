@@ -38,7 +38,7 @@ func New(cfg Config) *Manager {
 // Run must be called from the main thread of execution.
 func (m *Manager) Run(ctx context.Context, shutdown context.CancelFunc) error {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	defer cancel() // Make sure all of the goroutines shut down when we stop
 
 	ch := m.start()
 
@@ -47,7 +47,7 @@ func (m *Manager) Run(ctx context.Context, shutdown context.CancelFunc) error {
 		m.stop()
 	}()
 
-	go m.refresh(ctx)
+	go m.refresh(ctx) // Tells the view models to refresh every second
 
 	var (
 		current = Directive{}
@@ -58,12 +58,26 @@ func (m *Manager) Run(ctx context.Context, shutdown context.CancelFunc) error {
 	for {
 		uiCtx, uiCancel := context.WithCancel(context.Background())
 
+		var received sync.WaitGroup
+		received.Add(1)
+
 		go func() {
-			next, ok = <-ch
-			uiCancel()
+			select {
+			case <-uiCtx.Done():
+				// The user closed the user interface before we received the next
+				// directive, so we default to None.
+				next = Directive{}
+			case next, ok = <-ch:
+				// A new directive has been received
+				uiCancel()
+			}
+			received.Done()
 		}()
 
 		err := m.run(uiCtx, current)
+		uiCancel()
+		received.Wait()
+
 		if err != nil {
 			return err
 		}
@@ -80,13 +94,39 @@ func (m *Manager) Change(t Type, callback Callback) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
+	//log.Printf("lui: changing from %s to %s", m.current, t)
+
 	if m.ch == nil {
 		return // Closed
 	}
 
 	if m.current != t {
+		//log.Printf("lui: changed to %s", t)
 		m.current = t
 		m.ch <- Directive{Type: t, Callback: callback}
+	}
+}
+
+// CompareAndChange instructs the manager to verify the current interface type,
+// then change it if the current value matches what was expected.
+func (m *Manager) CompareAndChange(from Type, to Type, callback Callback) {
+	if from == to {
+		return
+	}
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	//log.Printf("lui: changing from %s to %s if %s", m.current, to, from)
+
+	if m.ch == nil {
+		return // Closed
+	}
+
+	if m.current == from {
+		//log.Printf("lui: changed to %s", to)
+		m.current = to
+		m.ch <- Directive{Type: to, Callback: callback}
 	}
 }
 
@@ -115,10 +155,11 @@ func (m *Manager) run(ctx context.Context, d Directive) error {
 	case <-m.ready:
 	}
 
+	//log.Printf("lui: directive %s", d.Type.String())
+
 	switch d.Type {
 	default:
-		<-ctx.Done()
-		return nil
+		return m.none(ctx, d.Callback)
 	case Queued:
 		return m.queued(ctx, d.Callback)
 	case Connected:

@@ -9,7 +9,7 @@ import (
 	"github.com/lxn/walk"
 )
 
-func call(callback Callback, r int) {
+func call(callback Callback, t Type, r int) {
 	if callback == nil {
 		return
 	}
@@ -27,7 +27,21 @@ func call(callback Callback, r int) {
 		result = ContextCancelled
 	}
 
-	go callback(result, nil)
+	callback(t, result, nil)
+}
+
+func (m *Manager) none(ctx context.Context, callback Callback) error {
+	m.mutex.Lock()
+	m.model = nil
+	m.mutex.Unlock()
+
+	<-ctx.Done()
+
+	if callback != nil {
+		callback(None, Success, nil)
+	}
+
+	return nil
 }
 
 func (m *Manager) queued(ctx context.Context, callback Callback) error {
@@ -43,7 +57,7 @@ func (m *Manager) queued(ctx context.Context, callback Callback) error {
 		return fmt.Errorf("unable to create queued user interface: %v", err)
 	}
 
-	call(callback, dlg.Run(ctx))
+	call(callback, Queued, dlg.Run(ctx))
 
 	return nil
 }
@@ -62,34 +76,26 @@ func (m *Manager) connected(ctx context.Context, callback Callback) error {
 		return fmt.Errorf("unable to create connected user interface: %v", err)
 	}
 
-	call(callback, dlg.Run(ctx))
+	call(callback, Connected, dlg.Run(ctx))
 
 	return nil
 }
 
 func (m *Manager) disconnected(ctx context.Context, callback Callback) error {
-	<-ctx.Done()
+	m.mutex.Lock()
+	model := NewConnectionModel(m.cfg, m.lease)
+	m.model = model
+	m.mutex.Unlock()
 
-	/*
-		switch result {
-		case leaseui.Success:
-			// The server came back online
-			r.setOnline(true)
-		case leaseui.Failure:
-			return err
-		case leaseui.UserCancelled, leaseui.UserClosed:
-			// The user intentionally stopped waiting
-			r.dismissal = time.Now()
-		case leaseui.ChannelClosed:
-			// The lease maintainer is shutting down
-		case leaseui.ContextCancelled:
-			// Either the system is shutting down or the lease expired
-			if r.current.Expired(now) {
-				log.Printf("Lease has expired. Shutting down %s", r.program)
-				shutdown()
-			}
-		}
-	*/
+	defer model.Close()
+
+	// Create the disconnected dialog
+	dlg, err := NewDisconnectedDialog(m.cfg.Icon, model)
+	if err != nil {
+		return fmt.Errorf("unable to create connected user interface: %v", err)
+	}
+
+	call(callback, Disconnected, dlg.Run(ctx))
 
 	return nil
 }

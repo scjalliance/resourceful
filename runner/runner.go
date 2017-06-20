@@ -26,12 +26,17 @@ type Runner struct {
 	retry     time.Duration
 	icon      *leaseui.Icon
 	client    *guardian.Client
-	running   bool
 	online    bool
-	warned    bool
+	acquired  bool // Have we ever acquired a lease?
+	running   bool
 	current   lease.Lease
-	dismissal time.Time
+	failed    bool // Have we lost connection?
+	warned    bool // Has the user been warned about a connection loss?
+	restored  bool // Are we waiting for the user to acknowledge that the connection was restored?
 	ui        *leaseui.Manager
+	dismissal time.Time
+
+	mutex sync.Mutex // Held during processing
 }
 
 // New creates a new runner for the given program and arguments.
@@ -115,15 +120,11 @@ func (r *Runner) run(ctx context.Context) (err error) {
 			return nil
 		}
 
-		/*
-			err = r.handleDowngrade()
-			if err != nil {
-				return
-			}
-		*/
+		r.mutex.Lock()
 
 		if response.Err == nil {
 			r.setOnline(true)
+			r.acquired = true
 			r.current = response.Lease
 		} else {
 			r.setOnline(false)
@@ -135,14 +136,16 @@ func (r *Runner) run(ctx context.Context) (err error) {
 			err = r.handleError(ctx, response, shutdown)
 		} else {
 			switch response.Lease.Status {
-			case lease.Active:
-				err = r.handleActive(ctx, shutdown)
 			case lease.Queued:
 				err = r.handleQueued(ctx, shutdown)
+			case lease.Active:
+				err = r.handleActive(ctx, shutdown)
 			default:
 				err = fmt.Errorf("unexpected lease status: \"%s\"", response.Lease.Status)
 			}
 		}
+
+		r.mutex.Unlock()
 
 		if err != nil {
 			return fmt.Errorf("runner: %v", err)
@@ -152,7 +155,14 @@ func (r *Runner) run(ctx context.Context) (err error) {
 
 // handleError processes lease retrieval errors.
 func (r *Runner) handleError(ctx context.Context, response guardian.Acquisition, shutdown context.CancelFunc) error {
+	r.failed = true
+
 	if !r.running {
+		// Errors prior to lease acquisition are treated as if they're fatal.
+		// Returning the error here causes it to be displayed to the user and will
+		// result in the runner shutting itself down.
+
+		// TODO: Add connection failure user interface for non-running conditions.
 		return response.Err
 	}
 
@@ -171,85 +181,12 @@ func (r *Runner) handleError(ctx context.Context, response guardian.Acquisition,
 	log.Printf("Lease time remaining: %s", remaining.String())
 
 	if shouldWarn(r.current, now, r.dismissal) {
-		r.ui.Change(leaseui.Disconnected, nil)
+		log.Printf("Displaying a warning to the user")
+		r.warned = true
+		r.ui.Change(leaseui.Disconnected, r.disconnectedCallback())
 	}
 
 	return nil
-}
-
-/*
-// handleDowngrade will return an error if a lease was downgraded unexpectedly.
-func (r *Runner) handleDowngrade() error {
-	if !r.running {
-		return nil
-	}
-
-	if r.current.Status == lease.Active {
-		return nil
-	}
-
-	// Check whether our lease got downgraded
-	if r.warned {
-		return fmt.Errorf("Lease was downgraded after the server came back online. Shutting down %s", r.program)
-	}
-
-	return fmt.Errorf("Lease was downgraded unexpectedly. Shutting down %s", r.program)
-}
-*/
-
-// handleRestored processes restoration after a connection to the server has
-// been restored.
-/*
-func (r *Runner) handleRestored(ctx context.Context, ch <-chan guardian.Acquisition, shutdown context.CancelFunc) error {
-	if !r.running {
-		return nil
-	}
-
-	// Check whether our lease got downgraded
-	if r.current.Status != lease.Active {
-		log.Printf("Lease was downgraded after the server came back online. Shutting down %s", r.program)
-		shutdown()
-		return nil
-	}
-
-	// Tell the user that the connection has been restored.
-	var result leaseui.Result
-	var err error
-	result, r.current, err = leaseui.Connected(ctx, r.icon, r.program, r.consumer, r.current, err, ch)
-
-	// Check whether our lease got downgraded
-	if r.current.Status != lease.Active {
-		log.Printf("Lease was downgraded unexpectedly. Shutting down %s", r.program)
-		shutdown()
-		return nil
-	}
-
-	// If the dialog returned success it means that the server went offline
-	// again. If that's the case then we shoul continue with our error loop.
-	// If the user closed the dialog or the system is shutting down then we
-	// exit.
-	if result != leaseui.Success {
-		return nil
-	}
-}
-*/
-
-// handleActive processes active lease acquisitions.
-func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc) (err error) {
-	r.ui.Change(leaseui.None, nil)
-
-	if r.running {
-		if !r.online {
-			log.Printf("Lease recovered")
-		} else {
-			log.Printf("Lease maintained")
-		}
-		return
-	}
-
-	log.Printf("Lease acquired")
-
-	return r.execute(ctx, completion)
 }
 
 // handleQueued processes queued lease acquisitions.
@@ -257,34 +194,92 @@ func (r *Runner) handleQueued(ctx context.Context, shutdown context.CancelFunc) 
 	if r.running {
 		// TODO: When a lease is downgraded to released or queued status
 		//       show the lease UI again?
-		log.Printf("Lease downgraded")
+		if r.failed {
+			r.failed = false
+			log.Printf("Lease was downgraded after the server came back online. Shutting down %s", r.config.Program)
+		} else {
+			log.Printf("Lease was downgraded unexpectedly. Shutting down %s", r.config.Program)
+		}
 		shutdown()
 		return nil
 	}
 
 	log.Printf("Lease queued")
 
-	r.ui.Change(leaseui.Queued, func(result leaseui.Result, err error) {
+	r.ui.Change(leaseui.Queued, r.queuedCallback(shutdown))
+
+	return nil
+}
+
+// handleActive processes active lease acquisitions.
+func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc) (err error) {
+	switch {
+	case r.warned:
+		r.restored = true
+		r.ui.Change(leaseui.Connected, r.connectedCallback())
+	case r.restored:
+		// Waiting for the user to acknowlege that the server has been restored
+	default:
+		r.ui.Change(leaseui.None, nil)
+	}
+
+	if r.running {
+		if r.failed {
+			log.Printf("Lease recovered")
+		} else {
+			log.Printf("Lease maintained")
+		}
+	} else {
+		log.Printf("Lease acquired")
+	}
+
+	r.warned = false
+	r.failed = false
+
+	if !r.running {
+		return r.execute(ctx, completion)
+	}
+
+	return
+}
+
+func (r *Runner) queuedCallback(shutdown context.CancelFunc) leaseui.Callback {
+	return func(t leaseui.Type, result leaseui.Result, err error) {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+
 		switch result {
 		case leaseui.UserCancelled, leaseui.UserClosed:
 			log.Printf("User stopped waiting for an active lease")
 			shutdown()
 		}
-	})
+	}
+}
 
-	/*
-		result, response, err := leaseui.Queued(ctx, r.icon, r.program, r.consumer, response, ch)
-		if err != nil || result != leaseui.Success {
-			// The user intentionally stopped waiting or something went wrong
-			shutdown()
-			return
+func (r *Runner) disconnectedCallback() leaseui.Callback {
+	return func(t leaseui.Type, result leaseui.Result, err error) {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+
+		switch result {
+		case leaseui.UserCancelled, leaseui.UserClosed:
+			log.Printf("User dismissed the warning")
+			r.dismissal = time.Now()
 		}
 
-		r.current = response.Lease
+		r.ui.CompareAndChange(leaseui.Disconnected, leaseui.None, nil)
+	}
+}
 
-		return r.execute(ctx, shutdown)
-	*/
-	return nil
+func (r *Runner) connectedCallback() leaseui.Callback {
+	return func(t leaseui.Type, result leaseui.Result, err error) {
+		log.Printf("connected callback")
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+
+		r.restored = false
+		r.ui.CompareAndChange(leaseui.Connected, leaseui.None, nil)
+	}
 }
 
 // execute will start the command in its own child process. It ensures that
