@@ -10,6 +10,12 @@ func (m *Manager) none(ctx context.Context, callback Callback) error {
 	return nil
 }
 
+func (m *Manager) startup(ctx context.Context, callback Callback) error {
+	<-ctx.Done()
+	callback(Startup, Success, nil)
+	return nil
+}
+
 func (m *Manager) queued(ctx context.Context, callback Callback) error {
 	<-ctx.Done()
 	callback(Queued, Success, nil)

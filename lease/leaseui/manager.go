@@ -160,6 +160,8 @@ func (m *Manager) run(ctx context.Context, d Directive) error {
 	switch d.Type {
 	default:
 		return m.none(ctx, d.Callback)
+	case Startup:
+		return m.startup(ctx, d.Callback)
 	case Queued:
 		return m.queued(ctx, d.Callback)
 	case Connected:

@@ -44,12 +44,22 @@ func (m *Manager) none(ctx context.Context, callback Callback) error {
 	return nil
 }
 
-func (m *Manager) queued(ctx context.Context, callback Callback) error {
-	m.mutex.Lock()
-	model := NewQueuedModel(m.cfg, m.acquisition)
-	m.model = model
-	m.mutex.Unlock()
+func (m *Manager) startup(ctx context.Context, callback Callback) error {
+	model := m.connectionModel()
+	defer model.Close()
 
+	dlg, err := NewStartupDialog(m.cfg.Icon, model)
+	if err != nil {
+		return fmt.Errorf("unable to create startup user interface: %v", err)
+	}
+
+	call(callback, Startup, dlg.Run(ctx))
+
+	return nil
+}
+
+func (m *Manager) queued(ctx context.Context, callback Callback) error {
+	model := m.queuedModel()
 	defer model.Close()
 
 	dlg, err := NewQueuedDialog(m.cfg.Icon, model)
@@ -63,14 +73,9 @@ func (m *Manager) queued(ctx context.Context, callback Callback) error {
 }
 
 func (m *Manager) connected(ctx context.Context, callback Callback) error {
-	m.mutex.Lock()
-	model := NewConnectionModel(m.cfg, m.lease)
-	m.model = model
-	m.mutex.Unlock()
-
+	model := m.connectionModel()
 	defer model.Close()
 
-	// Create the connected dialog
 	dlg, err := NewConnectedDialog(m.cfg.Icon, model)
 	if err != nil {
 		return fmt.Errorf("unable to create connected user interface: %v", err)
@@ -82,14 +87,9 @@ func (m *Manager) connected(ctx context.Context, callback Callback) error {
 }
 
 func (m *Manager) disconnected(ctx context.Context, callback Callback) error {
-	m.mutex.Lock()
-	model := NewConnectionModel(m.cfg, m.lease)
-	m.model = model
-	m.mutex.Unlock()
-
+	model := m.connectionModel()
 	defer model.Close()
 
-	// Create the disconnected dialog
 	dlg, err := NewDisconnectedDialog(m.cfg.Icon, model)
 	if err != nil {
 		return fmt.Errorf("unable to create connected user interface: %v", err)
@@ -98,4 +98,26 @@ func (m *Manager) disconnected(ctx context.Context, callback Callback) error {
 	call(callback, Disconnected, dlg.Run(ctx))
 
 	return nil
+}
+
+func (m *Manager) connectionModel() (model *ConnectionModel) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	model = NewConnectionModel(m.cfg, m.lease)
+	model.Update(m.lease, m.acquisition)
+	m.model = model
+
+	return
+}
+
+func (m *Manager) queuedModel() (model *QueuedModel) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	model = NewQueuedModel(m.cfg, m.acquisition)
+	model.Update(m.lease, m.acquisition)
+	m.model = model
+
+	return
 }

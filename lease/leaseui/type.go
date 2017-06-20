@@ -6,6 +6,7 @@ type Type int
 // Lease types
 const (
 	None Type = iota
+	Startup
 	Queued
 	Connected
 	Disconnected
@@ -16,6 +17,8 @@ func (t Type) String() string {
 	switch t {
 	case None:
 		return "none"
+	case Startup:
+		return "startup"
 	case Queued:
 		return "queued"
 	case Connected:
