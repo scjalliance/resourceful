@@ -158,12 +158,9 @@ func (r *Runner) handleError(ctx context.Context, response guardian.Acquisition,
 	r.failed = true
 
 	if !r.running {
-		// Errors prior to lease acquisition are treated as if they're fatal.
-		// Returning the error here causes it to be displayed to the user and will
-		// result in the runner shutting itself down.
-
-		// TODO: Add connection failure user interface for non-running conditions.
-		return response.Err
+		log.Printf("Lease acquisition failed: %v", response.Err)
+		r.ui.Change(leaseui.Startup, r.startupCallback(shutdown))
+		return nil
 	}
 
 	log.Printf("Lease renewal failed: %v", response.Err)
@@ -181,7 +178,7 @@ func (r *Runner) handleError(ctx context.Context, response guardian.Acquisition,
 	log.Printf("Lease time remaining: %s", remaining.String())
 
 	if shouldWarn(r.current, now, r.dismissal) {
-		log.Printf("Displaying a warning to the user")
+		log.Printf("Warning the user")
 		r.warned = true
 		r.ui.Change(leaseui.Disconnected, r.disconnectedCallback())
 	}
@@ -243,6 +240,19 @@ func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc
 	return
 }
 
+func (r *Runner) startupCallback(shutdown context.CancelFunc) leaseui.Callback {
+	return func(t leaseui.Type, result leaseui.Result, err error) {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+
+		switch result {
+		case leaseui.UserCancelled, leaseui.UserClosed:
+			log.Printf("User stopped waiting for an active connection")
+			shutdown()
+		}
+	}
+}
+
 func (r *Runner) queuedCallback(shutdown context.CancelFunc) leaseui.Callback {
 	return func(t leaseui.Type, result leaseui.Result, err error) {
 		r.mutex.Lock()
@@ -273,7 +283,6 @@ func (r *Runner) disconnectedCallback() leaseui.Callback {
 
 func (r *Runner) connectedCallback() leaseui.Callback {
 	return func(t leaseui.Type, result leaseui.Result, err error) {
-		log.Printf("connected callback")
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
 
@@ -333,7 +342,7 @@ func shouldWarn(ls lease.Lease, at, last time.Time) bool {
 
 	remaining := expiration.Sub(at)
 	if remaining < time.Minute*1 {
-		log.Printf("Less than 1 minute remains")
+		// Always nag the user if doom is approaching
 		return true
 	}
 
