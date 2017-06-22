@@ -27,21 +27,31 @@ type ServerConfig struct {
 	Logger          *log.Logger
 }
 
-// server is a guardian HTTP server that coordinates locks on finite resources.
-type server struct {
+// Server is a resourceful guardian HTTP server that coordinates locks on
+// finite resources.
+type Server struct {
 	ServerConfig
+}
+
+// NewServer creates a new resourceful guardian server that will handle HTTP
+// requests.
+func NewServer(cfg ServerConfig) *Server {
+	return &Server{
+		ServerConfig: cfg,
+	}
 }
 
 // Run will create and run a resourceful guardian server until the provided
 // context is canceled.
 func Run(ctx context.Context, cfg ServerConfig) (err error) {
-	s := &server{
-		ServerConfig: cfg,
-	}
+	s := NewServer(cfg)
 	return s.Run(ctx)
 }
 
-func (s *server) Run(ctx context.Context) (err error) {
+// Run will start the server and let it run until the context is cancelled.
+//
+// If the server cannot be started it will return an error immediately.
+func (s *Server) Run(ctx context.Context) (err error) {
 	s.purge()
 	defer s.purge()
 	printf(s.Logger, "Starting HTTP listener on %s", s.ListenSpec)
@@ -91,7 +101,7 @@ func (s *server) Run(ctx context.Context) (err error) {
 }
 
 // healthHandler will return the condition of the server.
-func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	response := transport.HealthResponse{OK: true}
 	data, err := json.Marshal(response)
 	if err != nil {
@@ -102,7 +112,7 @@ func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // leasesHandler will return the set of leases for a particular resource.
-func (s *server) leasesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := parseRequest(r)
 	if err != nil {
 		err = fmt.Errorf("unable to parse request: %v", err)
@@ -132,7 +142,7 @@ func (s *server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // acquireHandler will attempt to acquire a lease for the specified resource.
-func (s *server) acquireHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 	req, pol, err := s.initRequest(r)
 	if err != nil {
 		printf(s.Logger, "Bad acquire request: %v\n", err)
@@ -277,7 +287,7 @@ func (s *server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 
 // releaseHandler will attempt to remove the lease for the given resource and
 // consumer.
-func (s *server) releaseHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 	req, pol, err := s.initRequest(r)
 	if err != nil {
 		printf(s.Logger, "Bad release request: %v\n", err)
@@ -358,7 +368,7 @@ func (s *server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(data))
 }
 
-func (s *server) purge() error {
+func (s *Server) purge() error {
 	resources, err := s.LeaseProvider.LeaseResources()
 	if err != nil {
 		return err
@@ -397,7 +407,7 @@ func (s *server) purge() error {
 	return nil
 }
 
-func (s *server) initRequest(r *http.Request) (req transport.Request, policies policy.Set, err error) {
+func (s *Server) initRequest(r *http.Request) (req transport.Request, policies policy.Set, err error) {
 	req, err = parseRequest(r)
 	if err != nil {
 		err = fmt.Errorf("unable to parse request: %v", err)
