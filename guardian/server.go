@@ -192,7 +192,7 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 			tx := lease.NewTx(req.Resource, revision, leases)
 
 			acc := leaseutil.Refresh(tx, now)
-			consumed := acc.Consumed(strat)
+			consumed := acc.Total(strat)
 			released := acc.Released(req.Consumer)
 
 			existing, found := tx.Instance(req.Consumer, req.Instance)

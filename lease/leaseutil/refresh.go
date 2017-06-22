@@ -41,7 +41,7 @@ func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 				return
 			}
 
-			consumed := acc.Consumed(iter.Strategy)
+			consumed := acc.Total(iter.Strategy)
 
 			// If we're already over-allocated there's no way this lease can be
 			// promoted to active
