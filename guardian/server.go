@@ -235,6 +235,11 @@ func acquireHandler(cfg ServerConfig) http.Handler {
 				}
 			}
 
+			// Don't bother committing empty transactions
+			if tx.Empty() {
+				break
+			}
+
 			// Attempt to commit the transaction
 			err = cfg.LeaseProvider.LeaseCommit(tx)
 			if err == nil {
@@ -307,6 +312,11 @@ func releaseHandler(cfg ServerConfig) http.Handler {
 			ls, found = tx.Instance(req.Consumer, req.Instance)
 			tx.Release(req.Consumer, req.Instance, now)
 			leaseutil.Refresh(tx, now) // Updates leases after release
+
+			// Don't bother committing empty transactions
+			if tx.Empty() {
+				break
+			}
 
 			// Attempt to commit the transaction
 			err = cfg.LeaseProvider.LeaseCommit(tx)

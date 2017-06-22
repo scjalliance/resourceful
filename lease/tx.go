@@ -148,6 +148,11 @@ func (tx *Tx) Ops() []Op {
 	return tx.ops
 }
 
+// Empty returns true if the transaction is empty
+func (tx *Tx) Empty() bool {
+	return len(tx.ops) == 0
+}
+
 // Effects returns a set of strings describing the effects of the transaction.
 func (tx *Tx) Effects() (effects []string) {
 	for _, op := range tx.ops {
