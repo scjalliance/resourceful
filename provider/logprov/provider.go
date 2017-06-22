@@ -107,12 +107,12 @@ func (p *Provider) record(tx *lease.Tx) {
 			// Don't record renewals
 			continue
 		}
-		if !op.Consumptive() {
-			// Don't record operations that don't affect consumption
-			continue
-		}
 		for _, effect := range op.Effects() {
-			p.log.Printf("TX %s", effect)
+			if !effect.Consumptive() {
+				// Only records effects that affect consumption
+				continue
+			}
+			p.log.Printf("TX %s", effect.String())
 		}
 	}
 }
