@@ -27,341 +27,339 @@ type ServerConfig struct {
 	Logger          *log.Logger
 }
 
-// Server coordinates locks on finite resources.
-/*
-type Server struct {
+// server is a guardian HTTP server that coordinates locks on finite resources.
+type server struct {
+	ServerConfig
 }
-*/
 
 // Run will create and run a resourceful guardian server until the provided
 // context is canceled.
 func Run(ctx context.Context, cfg ServerConfig) (err error) {
-	purge(cfg)
-	defer purge(cfg)
-	printf(cfg.Logger, "Starting HTTP listener on %s", cfg.ListenSpec)
+	s := &server{
+		ServerConfig: cfg,
+	}
+	return s.Run(ctx)
+}
 
-	listener, err := net.Listen("tcp", cfg.ListenSpec)
+func (s *server) Run(ctx context.Context) (err error) {
+	s.purge()
+	defer s.purge()
+	printf(s.Logger, "Starting HTTP listener on %s", s.ListenSpec)
+
+	listener, err := net.Listen("tcp", s.ListenSpec)
 	if err != nil {
-		cfg.Logger.Printf("Error creating HTTP listener on %s: %v", cfg.ListenSpec, err)
+		s.Logger.Printf("Error creating HTTP listener on %s: %v", s.ListenSpec, err)
 		return
 	}
 
 	mux := http.NewServeMux()
-	server := &http.Server{
+	mux.Handle("/health", http.HandlerFunc(s.healthHandler))
+	mux.Handle("/leases", http.HandlerFunc(s.leasesHandler))
+	mux.Handle("/acquire", http.HandlerFunc(s.acquireHandler))
+	mux.Handle("/release", http.HandlerFunc(s.releaseHandler))
+
+	srv := &http.Server{
 		ReadTimeout:    60 * time.Second,
 		WriteTimeout:   60 * time.Second,
 		MaxHeaderBytes: 1 << 16,
 		Handler:        mux,
 	}
 
-	mux.Handle("/health", healthHandler(cfg))
-	mux.Handle("/leases", leasesHandler(cfg))
-	mux.Handle("/acquire", acquireHandler(cfg))
-	mux.Handle("/release", releaseHandler(cfg))
-
 	result := make(chan error)
 
 	go func() {
-		result <- server.Serve(listener)
+		result <- srv.Serve(listener)
 		close(result)
 	}()
 
 	select {
 	case err = <-result:
-		printf(cfg.Logger, "Stopped HTTP listener on %s due to error: %v", cfg.ListenSpec, err)
+		printf(s.Logger, "Stopped HTTP listener on %s due to error: %v", s.ListenSpec, err)
 		return
 	case <-ctx.Done():
 	}
 
-	printf(cfg.Logger, "Stopping HTTP listener on %s due to shutdown signal", cfg.ListenSpec)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	printf(s.Logger, "Stopping HTTP listener on %s due to shutdown signal", s.ListenSpec)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.ShutdownTimeout)
 	defer cancel()
-	server.Shutdown(shutdownCtx)
+	srv.Shutdown(shutdownCtx)
 
 	err = <-result
 
-	printf(cfg.Logger, "Stopped HTTP listener on %s", cfg.ListenSpec)
+	printf(s.Logger, "Stopped HTTP listener on %s", s.ListenSpec)
 	return
 }
 
 // healthHandler will return the condition of the server.
-func healthHandler(cfg ServerConfig) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := transport.HealthResponse{OK: true}
-		data, err := json.Marshal(response)
-		if err != nil {
-			http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
-			return
-		}
-		fmt.Fprintf(w, string(data))
-	})
+func (s *server) healthHandler(w http.ResponseWriter, r *http.Request) {
+	response := transport.HealthResponse{OK: true}
+	data, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
+		return
+	}
+	fmt.Fprintf(w, string(data))
 }
 
 // leasesHandler will return the set of leases for a particular resource.
-func leasesHandler(cfg ServerConfig) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, err := parseRequest(r)
-		if err != nil {
-			err = fmt.Errorf("unable to parse request: %v", err)
-			printf(cfg.Logger, "Bad leases request: %v\n", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+func (s *server) leasesHandler(w http.ResponseWriter, r *http.Request) {
+	req, err := parseRequest(r)
+	if err != nil {
+		err = fmt.Errorf("unable to parse request: %v", err)
+		printf(s.Logger, "Bad leases request: %v\n", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-		revision, leases, err := cfg.LeaseProvider.LeaseView(req.Resource)
-		if err != nil {
-			printf(cfg.Logger, "Lease retrieval failed: %v\n", err)
-		}
-		now := time.Now()
-		tx := lease.NewTx(req.Resource, revision, leases)
-		leaseutil.Refresh(tx, now)
+	revision, leases, err := s.LeaseProvider.LeaseView(req.Resource)
+	if err != nil {
+		printf(s.Logger, "Lease retrieval failed: %v\n", err)
+	}
+	now := time.Now()
+	tx := lease.NewTx(req.Resource, revision, leases)
+	leaseutil.Refresh(tx, now)
 
-		response := transport.LeasesResponse{
-			Request: req,
-			Leases:  tx.Leases(),
-		}
-		data, err := json.MarshalIndent(response, "", "\t")
-		if err != nil {
-			http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
-			return
-		}
-		fmt.Fprintf(w, string(data))
-	})
+	response := transport.LeasesResponse{
+		Request: req,
+		Leases:  tx.Leases(),
+	}
+	data, err := json.MarshalIndent(response, "", "\t")
+	if err != nil {
+		http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
+		return
+	}
+	fmt.Fprintf(w, string(data))
 }
 
 // acquireHandler will attempt to acquire a lease for the specified resource.
-func acquireHandler(cfg ServerConfig) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, pol, err := initRequest(cfg, r)
+func (s *server) acquireHandler(w http.ResponseWriter, r *http.Request) {
+	req, pol, err := s.initRequest(r)
+	if err != nil {
+		printf(s.Logger, "Bad acquire request: %v\n", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
+
+	printf(s.Logger, "%s: Lease acquisition requested\n", prefix)
+
+	strat := pol.Strategy()
+	limit := pol.Limit()
+	duration := pol.Duration()
+	decay := pol.Decay()
+	refresh := pol.Refresh()
+
+	var leases lease.Set
+	var ls lease.Lease
+	mode := "Creation" // Only used for logging
+
+	for attempt := 0; attempt < 5; attempt++ {
+		var revision uint64
+
+		revision, leases, err = s.LeaseProvider.LeaseView(req.Resource)
 		if err != nil {
-			printf(cfg.Logger, "Bad acquire request: %v\n", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			printf(s.Logger, "%s: Lease retrieval failed: %v\n", prefix, err)
+		}
+		now := time.Now()
+
+		ls = lease.Lease{
+			Resource:    req.Resource,
+			Consumer:    req.Consumer,
+			Instance:    req.Instance,
+			Environment: req.Environment,
+			Started:     now,
+			Renewed:     now,
+			Strategy:    strat,
+			Limit:       limit,
+			Duration:    duration,
+			Decay:       decay,
+			Refresh:     refresh,
 		}
 
-		prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
-
-		printf(cfg.Logger, "%s: Lease acquisition requested\n", prefix)
-
-		strat := pol.Strategy()
-		limit := pol.Limit()
-		duration := pol.Duration()
-		decay := pol.Decay()
-		refresh := pol.Refresh()
-
-		var leases lease.Set
-		var ls lease.Lease
-		mode := "Creation" // Only used for logging
-
-		for attempt := 0; attempt < 5; attempt++ {
-			var revision uint64
-
-			revision, leases, err = cfg.LeaseProvider.LeaseView(req.Resource)
-			if err != nil {
-				printf(cfg.Logger, "%s: Lease retrieval failed: %v\n", prefix, err)
+		if ls.Refresh.Active != 0 {
+			if ls.Duration <= ls.Refresh.Active {
+				printf(s.Logger, "%s: The lease policy specified an active refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Active.String(), ls.Duration.String())
+				ls.Refresh.Active = 0 // Use the default refresh rate instead of nonsense
 			}
-			now := time.Now()
-
-			ls = lease.Lease{
-				Resource:    req.Resource,
-				Consumer:    req.Consumer,
-				Instance:    req.Instance,
-				Environment: req.Environment,
-				Started:     now,
-				Renewed:     now,
-				Strategy:    strat,
-				Limit:       limit,
-				Duration:    duration,
-				Decay:       decay,
-				Refresh:     refresh,
+		}
+		if ls.Refresh.Queued != 0 {
+			if ls.Duration <= ls.Refresh.Queued {
+				printf(s.Logger, "%s: The lease policy specified a queued refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Queued.String(), ls.Duration.String())
+				ls.Refresh.Queued = 0 // Use the default refresh rate instead of nonsense
 			}
+		}
 
-			if ls.Refresh.Active != 0 {
-				if ls.Duration <= ls.Refresh.Active {
-					printf(cfg.Logger, "%s: The lease policy specified an active refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Active.String(), ls.Duration.String())
-					ls.Refresh.Active = 0 // Use the default refresh rate instead of nonsense
-				}
-			}
-			if ls.Refresh.Queued != 0 {
-				if ls.Duration <= ls.Refresh.Queued {
-					printf(cfg.Logger, "%s: The lease policy specified a queued refresh interval of %s for a lease with a duration of %s. The refresh interval will be overridden.\n", prefix, ls.Refresh.Queued.String(), ls.Duration.String())
-					ls.Refresh.Queued = 0 // Use the default refresh rate instead of nonsense
-				}
-			}
+		tx := lease.NewTx(req.Resource, revision, leases)
 
-			tx := lease.NewTx(req.Resource, revision, leases)
+		acc := leaseutil.Refresh(tx, now)
+		consumed := acc.Total(strat)
+		released := acc.Released(req.Consumer)
 
-			acc := leaseutil.Refresh(tx, now)
-			consumed := acc.Total(strat)
-			released := acc.Released(req.Consumer)
-
-			existing, found := tx.Instance(req.Consumer, req.Instance)
-			if found {
-				if existing.Status == lease.Released {
-					// Renewal of a released lease, possibly because of timing skew
-					// Because the lease has expired we treat this as a creation
-					if consumed <= limit {
-						ls.Status = lease.Active
-					} else {
-						ls.Status = lease.Queued
-					}
-					tx.Update(existing.Consumer, existing.Instance, ls)
-				} else {
-					// Renewal of active or queued lease
-					mode = "Renewal"
-					ls.Status = existing.Status
-					ls.Started = existing.Started
-					tx.Update(existing.Consumer, existing.Instance, ls)
-				}
-			} else {
-				if released > 0 && consumed <= limit {
-					// Lease replacement (for an expired or released lease previously
-					// issued to the the same consumer, that's in a decaying state)
-					replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
-					if uint(len(replaceable)) != released {
-						panic("server: acquireHandler: accumulator returned a different count for relased leases than the transaction")
-					}
-					replaced := replaceable[released-1]
+		existing, found := tx.Instance(req.Consumer, req.Instance)
+		if found {
+			if existing.Status == lease.Released {
+				// Renewal of a released lease, possibly because of timing skew
+				// Because the lease has expired we treat this as a creation
+				if consumed <= limit {
 					ls.Status = lease.Active
-					tx.Update(replaced.Consumer, replaced.Instance, ls)
 				} else {
-					// New lease
-					if leaseutil.CanActivate(strat, acc.Active(req.Consumer), consumed, limit) {
-						ls.Status = lease.Active
-					} else {
-						ls.Status = lease.Queued
-					}
-					tx.Create(ls)
+					ls.Status = lease.Queued
 				}
+				tx.Update(existing.Consumer, existing.Instance, ls)
+			} else {
+				// Renewal of active or queued lease
+				mode = "Renewal"
+				ls.Status = existing.Status
+				ls.Started = existing.Started
+				tx.Update(existing.Consumer, existing.Instance, ls)
 			}
-
-			// Don't bother committing empty transactions
-			if tx.Empty() {
-				break
+		} else {
+			if released > 0 && consumed <= limit {
+				// Lease replacement (for an expired or released lease previously
+				// issued to the the same consumer, that's in a decaying state)
+				replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
+				if uint(len(replaceable)) != released {
+					panic("server: acquireHandler: accumulator returned a different count for relased leases than the transaction")
+				}
+				replaced := replaceable[released-1]
+				ls.Status = lease.Active
+				tx.Update(replaced.Consumer, replaced.Instance, ls)
+			} else {
+				// New lease
+				if leaseutil.CanActivate(strat, acc.Active(req.Consumer), consumed, limit) {
+					ls.Status = lease.Active
+				} else {
+					ls.Status = lease.Queued
+				}
+				tx.Create(ls)
 			}
-
-			// Attempt to commit the transaction
-			err = cfg.LeaseProvider.LeaseCommit(tx)
-			if err == nil {
-				leases = tx.Leases()
-				break
-			}
-
-			printf(cfg.Logger, "%s: Lease acquisition failed: %v\n", prefix, err)
 		}
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		// Don't bother committing empty transactions
+		if tx.Empty() {
+			break
 		}
 
-		summary := statsSummary(limit, leases.Stats(), strat)
-		printf(cfg.Logger, "%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
-
-		response := transport.AcquireResponse{
-			Request: req,
-			Lease:   ls,
-			Leases:  leases,
+		// Attempt to commit the transaction
+		err = s.LeaseProvider.LeaseCommit(tx)
+		if err == nil {
+			leases = tx.Leases()
+			break
 		}
 
-		data, err := json.Marshal(response)
-		if err != nil {
-			printf(cfg.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
-			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
-			return
-		}
+		printf(s.Logger, "%s: Lease acquisition failed: %v\n", prefix, err)
+	}
 
-		fmt.Fprintf(w, string(data))
-	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	summary := statsSummary(limit, leases.Stats(), strat)
+	printf(s.Logger, "%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
+
+	response := transport.AcquireResponse{
+		Request: req,
+		Lease:   ls,
+		Leases:  leases,
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		printf(s.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
+		http.Error(w, "Failed to marshal response", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Fprintf(w, string(data))
 }
 
 // releaseHandler will attempt to remove the lease for the given resource and
 // consumer.
-func releaseHandler(cfg ServerConfig) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, pol, err := initRequest(cfg, r)
+func (s *server) releaseHandler(w http.ResponseWriter, r *http.Request) {
+	req, pol, err := s.initRequest(r)
+	if err != nil {
+		printf(s.Logger, "Bad release request: %v\n", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
+
+	printf(s.Logger, "%s: Release requested\n", prefix)
+
+	strat := pol.Strategy()
+	limit := pol.Limit()
+
+	var leases lease.Set
+	var ls lease.Lease
+	var found bool
+
+	for attempt := 0; attempt < 5; attempt++ {
+		var revision uint64
+		revision, leases, err = s.LeaseProvider.LeaseView(req.Resource)
 		if err != nil {
-			printf(cfg.Logger, "Bad release request: %v\n", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			printf(s.Logger, "%s: Release failed: %v\n", prefix, err)
+			continue
 		}
 
-		prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
+		// Prepare a delete transaction
+		now := time.Now()
+		tx := lease.NewTx(req.Resource, revision, leases)
+		leaseutil.Refresh(tx, now) // Update stale values
+		ls, found = tx.Instance(req.Consumer, req.Instance)
+		tx.Release(req.Consumer, req.Instance, now)
+		leaseutil.Refresh(tx, now) // Updates leases after release
 
-		printf(cfg.Logger, "%s: Release requested\n", prefix)
-
-		strat := pol.Strategy()
-		limit := pol.Limit()
-
-		var leases lease.Set
-		var ls lease.Lease
-		var found bool
-
-		for attempt := 0; attempt < 5; attempt++ {
-			var revision uint64
-			revision, leases, err = cfg.LeaseProvider.LeaseView(req.Resource)
-			if err != nil {
-				printf(cfg.Logger, "%s: Release failed: %v\n", prefix, err)
-				continue
-			}
-
-			// Prepare a delete transaction
-			now := time.Now()
-			tx := lease.NewTx(req.Resource, revision, leases)
-			leaseutil.Refresh(tx, now) // Update stale values
-			ls, found = tx.Instance(req.Consumer, req.Instance)
-			tx.Release(req.Consumer, req.Instance, now)
-			leaseutil.Refresh(tx, now) // Updates leases after release
-
-			// Don't bother committing empty transactions
-			if tx.Empty() {
-				break
-			}
-
-			// Attempt to commit the transaction
-			err = cfg.LeaseProvider.LeaseCommit(tx)
-			if err == nil {
-				leases = tx.Leases()
-				break
-			}
-
-			printf(cfg.Logger, "%s: Release failed: %v\n", prefix, err)
+		// Don't bother committing empty transactions
+		if tx.Empty() {
+			break
 		}
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		// Attempt to commit the transaction
+		err = s.LeaseProvider.LeaseCommit(tx)
+		if err == nil {
+			leases = tx.Leases()
+			break
 		}
 
-		summary := statsSummary(limit, leases.Stats(), strat)
-		if found {
-			if ls.Status == lease.Released {
-				printf(cfg.Logger, "%s: Release ignored because the lease had already been released (%s)\n", prefix, summary)
-			} else {
-				printf(cfg.Logger, "%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, summary)
-			}
+		printf(s.Logger, "%s: Release failed: %v\n", prefix, err)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	summary := statsSummary(limit, leases.Stats(), strat)
+	if found {
+		if ls.Status == lease.Released {
+			printf(s.Logger, "%s: Release ignored because the lease had already been released (%s)\n", prefix, summary)
 		} else {
-			printf(cfg.Logger, "%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
+			printf(s.Logger, "%s: Release of %s lease succeeded (%s)\n", prefix, ls.Status, summary)
 		}
+	} else {
+		printf(s.Logger, "%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
+	}
 
-		response := transport.ReleaseResponse{
-			Request: req,
-			Success: true,
-		}
+	response := transport.ReleaseResponse{
+		Request: req,
+		Success: true,
+	}
 
-		data, err := json.Marshal(response)
-		if err != nil {
-			printf(cfg.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
-			http.Error(w, "Failed to marshal response", http.StatusBadRequest)
-			return
-		}
+	data, err := json.Marshal(response)
+	if err != nil {
+		printf(s.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
+		http.Error(w, "Failed to marshal response", http.StatusBadRequest)
+		return
+	}
 
-		fmt.Fprintf(w, string(data))
-	})
+	fmt.Fprintf(w, string(data))
 }
 
-func purge(cfg ServerConfig) error {
-	resources, err := cfg.LeaseProvider.LeaseResources()
+func (s *server) purge() error {
+	resources, err := s.LeaseProvider.LeaseResources()
 	if err != nil {
 		return err
 	}
@@ -371,9 +369,9 @@ func purge(cfg ServerConfig) error {
 				leases   lease.Set
 				revision uint64
 			)
-			revision, leases, err = cfg.LeaseProvider.LeaseView(resource)
+			revision, leases, err = s.LeaseProvider.LeaseView(resource)
 			if err != nil {
-				printf(cfg.Logger, "Purge of \"%s\" failed: %v\n", resource, err)
+				printf(s.Logger, "Purge of \"%s\" failed: %v\n", resource, err)
 				continue
 			}
 
@@ -386,11 +384,11 @@ func purge(cfg ServerConfig) error {
 			}
 
 			// Attempt to commit the transaction
-			err = cfg.LeaseProvider.LeaseCommit(tx)
+			err = s.LeaseProvider.LeaseCommit(tx)
 			if err == nil {
 				break
 			}
-			printf(cfg.Logger, "Purge of \"%s\" failed: %v\n", resource, err)
+			printf(s.Logger, "Purge of \"%s\" failed: %v\n", resource, err)
 		}
 		if err != nil {
 			return err
@@ -399,14 +397,14 @@ func purge(cfg ServerConfig) error {
 	return nil
 }
 
-func initRequest(cfg ServerConfig, r *http.Request) (req transport.Request, policies policy.Set, err error) {
+func (s *server) initRequest(r *http.Request) (req transport.Request, policies policy.Set, err error) {
 	req, err = parseRequest(r)
 	if err != nil {
 		err = fmt.Errorf("unable to parse request: %v", err)
 		return
 	}
 
-	all, err := cfg.PolicyProvider.Policies()
+	all, err := s.PolicyProvider.Policies()
 	if err != nil {
 		err = fmt.Errorf("unable to retrieve policies: %v", err)
 		return
