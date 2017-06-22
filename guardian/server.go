@@ -52,8 +52,8 @@ func Run(ctx context.Context, cfg ServerConfig) (err error) {
 //
 // If the server cannot be started it will return an error immediately.
 func (s *Server) Run(ctx context.Context) (err error) {
-	s.purge()
-	defer s.purge()
+	s.Purge()
+	defer s.Purge()
 	printf(s.Logger, "Starting HTTP listener on %s", s.ListenSpec)
 
 	listener, err := net.Listen("tcp", s.ListenSpec)
@@ -368,7 +368,9 @@ func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(data))
 }
 
-func (s *Server) purge() error {
+// Purge instructs the server to conduct a full survey of all lease data
+// and delete expired leases.
+func (s *Server) Purge() error {
 	resources, err := s.LeaseProvider.LeaseResources()
 	if err != nil {
 		return err
