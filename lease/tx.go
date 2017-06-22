@@ -118,10 +118,12 @@ func (tx *Tx) Update(consumer, instance string, ls Lease) error {
 func (tx *Tx) Release(consumer, instance string, at time.Time) error {
 	tx.Process(func(iter *Iter) {
 		if iter.MatchInstance(tx.resource, consumer, instance) {
-			if iter.Status != Released {
+			if iter.Status == Active {
 				iter.Status = Released
 				iter.Released = at
 				iter.Update()
+			} else {
+				iter.Delete()
 			}
 		}
 	})
