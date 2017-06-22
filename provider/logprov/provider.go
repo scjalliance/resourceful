@@ -19,10 +19,12 @@ type Provider struct {
 
 // New returns a new transaction logging provider.
 func New(source lease.Provider, logger *log.Logger) *Provider {
-	return &Provider{
+	p := &Provider{
 		source: source,
 		log:    logger,
 	}
+	p.Checkpoint()
+	return p
 }
 
 // Close releases any resources consumed by the provider and its source.
