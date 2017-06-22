@@ -41,6 +41,16 @@ func (ls *Lease) MatchStatus(status Status) (matched bool) {
 	return ls.Status == status
 }
 
+// Consumptive returns true if the lease is active or released.
+func (ls *Lease) Consumptive() (matched bool) {
+	switch ls.Status {
+	case Active, Released:
+		return true
+	default:
+		return false
+	}
+}
+
 // ExpirationTime returns the time at which the lease expires.
 func (ls *Lease) ExpirationTime() time.Time {
 	return ls.Renewed.Add(ls.Duration)

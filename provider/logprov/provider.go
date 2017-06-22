@@ -87,7 +87,9 @@ func (p *Provider) Checkpoint() (err error) {
 		} else {
 			p.log.Printf("CP %v RESOURCE %s REV %d", at, resource, revision)
 			for _, ls := range leases {
-				p.log.Printf("CP %v LEASE %s %s", at, ls.Subject(), strings.ToUpper(string(ls.Status)))
+				if ls.Consumptive() {
+					p.log.Printf("CP %v LEASE %s %s", at, ls.Subject(), strings.ToUpper(string(ls.Status)))
+				}
 			}
 		}
 	}
@@ -101,6 +103,10 @@ func (p *Provider) record(tx *lease.Tx) {
 	for _, op := range tx.Ops() {
 		if op.Type == lease.Update && op.UpdateType() == lease.Renew {
 			// Don't record renewals
+			continue
+		}
+		if !op.Consumptive() {
+			// Don't record operations that don't affect consumption
 			continue
 		}
 		for _, effect := range op.Effects() {

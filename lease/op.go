@@ -77,6 +77,20 @@ func (op *Op) UpdateType() UpdateType {
 	}
 }
 
+// Consumptive returns true if the operation affects a consumptive lease.
+func (op *Op) Consumptive() bool {
+	switch op.Type {
+	case Create:
+		return op.Lease.Consumptive()
+	case Update:
+		return op.Lease.Consumptive() || op.Previous.Consumptive()
+	case Delete:
+		return op.Previous.Consumptive()
+	default:
+		return false
+	}
+}
+
 // Effects returns a set of strings describing the effects of the operation.
 func (op *Op) Effects() (effects []string) {
 	switch op.Type {
