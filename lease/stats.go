@@ -55,20 +55,21 @@ func (s *Stats) Queued(strat strategy.Strategy) uint {
 func (s *Stats) Consumed(strat strategy.Strategy) uint {
 	switch strat {
 	case strategy.Instance:
-		return s.Instance.Consumed()
+		return s.Instance.Consumed
 	case strategy.Consumer:
-		return s.Consumer.Consumed()
+		return s.Consumer.Consumed
 	default:
 		panic("unknown strategy")
 	}
 }
 
-// Tally is a set of consumption statistics for a particular resource
-// counting strategy.
+// Tally is a set of resource statistics for a particular resource counting
+// strategy.
 type Tally struct {
 	Active   uint
 	Released uint
 	Queued   uint
+	Consumed uint
 }
 
 // Add will increase the tally for the specified status.
@@ -76,16 +77,11 @@ func (t *Tally) Add(status Status) {
 	switch status {
 	case Active:
 		t.Active++
+		t.Consumed++
 	case Released:
 		t.Released++
+		t.Consumed++
 	case Queued:
 		t.Queued++
 	}
-}
-
-// Consumed returns the number of consumed resources.
-//
-// Both both active and released resources contribute towards consumption.
-func (t *Tally) Consumed() uint {
-	return t.Active + t.Released
 }
