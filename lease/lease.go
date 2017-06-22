@@ -110,9 +110,9 @@ func (ls *Lease) ResourceName() string {
 }
 
 // Subject returns a string identifying the subject of the lease, which
-// includes the resource, consumer and instance.
+// includes the instance, consumer and resource.
 func (ls *Lease) Subject() string {
-	return fmt.Sprintf("\"%s\" \"%s\" \"%s\"", ls.Resource, ls.Consumer, ls.Instance)
+	return fmt.Sprintf("%s %s %s", ls.Instance, ls.Consumer, ls.Resource)
 }
 
 // Clone returns a deep copy of the lease.
