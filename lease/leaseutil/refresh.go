@@ -13,6 +13,8 @@ import (
 func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 	acc := NewAccumulator()
 
+	replacements := make(lease.Set, 0, 5)
+
 	tx.Process(func(iter *lease.Iter) {
 		switch iter.Status {
 		case lease.Active:
@@ -52,11 +54,11 @@ func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 			// When possible, replace an existing lease for the same consumer
 			// that has already been released and is decaying.
 			if acc.Released(iter.Consumer) > 0 {
-				// This requires two passes. In this pass we'll update the queued
-				// lease to make it active. We note the replacement here and then delete
-				// the lease that was replaced in the second pass.
-				iter.Status = lease.Active
-				iter.Update()
+				// This requires two passes. In this pass we'll note the replacement
+				// and delete the queued lease. In the second pass we'll update the
+				// decaying lease.
+				replacements = append(replacements, iter.Lease)
+				iter.Delete()
 				acc.StartReplacement(iter.Consumer)
 				return
 			}
@@ -70,6 +72,8 @@ func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 	})
 
 	if acc.ReplacementsRecorded() {
+		var r int
+
 		tx.ProcessReverse(func(iter *lease.Iter) {
 			if iter.Status != lease.Released {
 				return
@@ -78,7 +82,10 @@ func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 				return
 			}
 			acc.FinishReplacement(iter.Consumer)
-			iter.Delete()
+			iter.Lease = replacements[r]
+			iter.Status = lease.Active
+			iter.Update()
+			r++
 		})
 	}
 
