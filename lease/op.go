@@ -35,6 +35,8 @@ type UpdateType uint32
 // Lease update types
 const (
 	Renew UpdateType = iota
+	Downgrade
+	Upgrade
 	Replace
 	Exchange
 	Transmute
@@ -45,6 +47,10 @@ func (t UpdateType) String() string {
 	switch t {
 	case Renew:
 		return "renew"
+	case Upgrade:
+		return "upgrade"
+	case Downgrade:
+		return "downgrade"
 	case Replace:
 		return "replace"
 	case Exchange:
@@ -72,6 +78,12 @@ func (op *Op) UpdateType() UpdateType {
 		return Exchange
 	case op.Lease.Instance != op.Previous.Instance:
 		return Replace
+	case op.Lease.Status != op.Previous.Status:
+		// Active < Released < Queued
+		if op.Lease.Status.Order() < op.Previous.Status.Order() {
+			return Upgrade
+		}
+		return Downgrade
 	default:
 		return Renew
 	}
