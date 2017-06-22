@@ -109,7 +109,7 @@ func (p *Provider) record(tx *lease.Tx) {
 		}
 		for _, effect := range op.Effects() {
 			if !effect.Consumptive() {
-				// Only records effects that affect consumption
+				// Only record effects that affect consumption
 				continue
 			}
 			p.log.Printf("TX %s", effect.String())
