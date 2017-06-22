@@ -156,7 +156,7 @@ func (tx *Tx) Empty() bool {
 }
 
 // Effects returns a set of strings describing the effects of the transaction.
-func (tx *Tx) Effects() (effects []string) {
+func (tx *Tx) Effects() (effects []Effect) {
 	for _, op := range tx.ops {
 		for _, e := range op.Effects() {
 			effects = append(effects, e)

@@ -1,6 +1,9 @@
 package lease
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Action is a type of lease operation
 type Action uint32
@@ -62,6 +65,17 @@ func (t UpdateType) String() string {
 	}
 }
 
+// Effect is an effect of a transaction.
+type Effect struct {
+	Lease
+	Action Action
+}
+
+// String returns a string representation of the effect.
+func (e *Effect) String() string {
+	return fmt.Sprintf("%s %s %s %s %s", e.Instance, e.Consumer, strings.ToUpper(e.Action.String()), strings.ToUpper(string(e.Status)), e.Resource)
+}
+
 // Op is a lease operation describing a create, update or delete action
 type Op struct {
 	Type     Action
@@ -104,15 +118,21 @@ func (op *Op) Consumptive() bool {
 }
 
 // Effects returns a set of strings describing the effects of the operation.
-func (op *Op) Effects() (effects []string) {
+func (op *Op) Effects() (effects []Effect) {
 	switch op.Type {
 	case Delete, Update:
-		effects = append(effects, fmt.Sprintf("%s %s DELETE %s", op.Previous.Instance, op.Previous.Consumer, op.Previous.Resource))
+		effects = append(effects, Effect{
+			Lease:  op.Previous,
+			Action: Delete,
+		})
 	}
 
 	switch op.Type {
 	case Create, Update:
-		effects = append(effects, fmt.Sprintf("%s %s CREATE %s", op.Lease.Instance, op.Lease.Consumer, op.Lease.Resource))
+		effects = append(effects, Effect{
+			Lease:  op.Lease,
+			Action: Create,
+		})
 	}
 
 	return
