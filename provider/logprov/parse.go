@@ -16,7 +16,7 @@ func ParseSchedule(s string) (schedule []Schedule, err error) {
 		return
 	}
 
-	items := strings.Split(s, " ")
+	items := strings.Split(s, ",")
 
 	for _, item := range items {
 		// TODO: Add support for cron-style scheduling?
