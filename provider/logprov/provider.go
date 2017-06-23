@@ -155,11 +155,11 @@ func (p *Provider) checkpoint() (err error) {
 	p.log.Printf("CP %v START", at)
 
 	for _, resource := range resources {
-		revision, leases, viewErr := p.source.LeaseView(resource)
+		_, leases, viewErr := p.source.LeaseView(resource)
 		if viewErr != nil {
 			p.log.Printf("CP %v RESOURCE %s ERR %v", at, resource, err)
 		} else {
-			p.log.Printf("CP %v RESOURCE %s REV %d", at, resource, revision)
+			//p.log.Printf("CP %v RESOURCE %s REV %d", at, resource, revision)
 			for _, ls := range leases {
 				if ls.Consumptive() {
 					p.log.Printf("CP %v LEASE %s %s", at, ls.Subject(), strings.ToUpper(string(ls.Status)))
