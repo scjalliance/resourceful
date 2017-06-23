@@ -7,21 +7,27 @@ import (
 	"sync"
 	"time"
 
+	"github.com/scjalliance/resourceful/counter"
 	"github.com/scjalliance/resourceful/lease"
 )
 
 // Provider provides boltdb-backed lease management.
 type Provider struct {
-	source lease.Provider
-	log    *log.Logger
-	mutex  sync.RWMutex // Only locked for checkpointing
+	source   lease.Provider
+	log      *log.Logger
+	schedule []Schedule
+	ctr      counter.Counter
+
+	mutex sync.RWMutex // Locked while checkpointing
+	last  uint64       // Value of ctr at the last checkpoint
 }
 
 // New returns a new transaction logging provider.
-func New(source lease.Provider, logger *log.Logger) *Provider {
+func New(source lease.Provider, logger *log.Logger, schedule ...Schedule) *Provider {
 	p := &Provider{
-		source: source,
-		log:    logger,
+		source:   source,
+		log:      logger,
+		schedule: schedule,
 	}
 	p.Checkpoint()
 	return p
@@ -73,6 +79,72 @@ func (p *Provider) Checkpoint() (err error) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
+	return p.checkpoint()
+}
+
+// record records the transaction in the transaction log.
+//
+// record assumes that a read lock is held for the duration of the call.
+func (p *Provider) record(tx *lease.Tx) {
+	var ops uint64 // Total number of consumptive ops (really op effects)
+
+	for _, op := range tx.Ops() {
+		if op.Type == lease.Update && op.UpdateType() == lease.Renew {
+			// Don't record renewals
+			continue
+		}
+		for _, effect := range op.Effects() {
+			if !effect.Consumptive() {
+				// Only record effects that affect consumption
+				continue
+			}
+			p.log.Printf("TX %s", effect.String())
+			ops++
+		}
+	}
+
+	p.add(ops)
+}
+
+// add adds the given number of operations to the ops counter.
+//
+// add assumes that a read lock is held for the duration of the call.
+func (p *Provider) add(ops uint64) {
+	if ops == 0 {
+		return
+	}
+
+	var (
+		current = p.ctr.Add(ops)   // How many ops have passed since the provider started
+		count   = current - p.last // How many ops have passed since the last checkpoint
+	)
+	for i := range p.schedule {
+		if count >= p.schedule[i].ops {
+			// Run the checkpoint in a separate goroutine so we don't deadlock
+			go p.runCheckpoint(current)
+			return
+		}
+	}
+}
+
+// runCheckpoint will run a checkpoint if the last checkpoint occurred at the
+// expected time.
+func (p *Provider) runCheckpoint(at uint64) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if p.last > at {
+		// Another goroutine beat us to the checkpoint
+		return
+	}
+
+	p.checkpoint()
+}
+
+// checkpoint writes checkpoint data to the transaction log.
+//
+// checkpoint assumes that a write lock is held for the duration of the call.
+func (p *Provider) checkpoint() (err error) {
 	at := time.Now().UnixNano()
 
 	resources, err := p.source.LeaseResources()
@@ -98,21 +170,7 @@ func (p *Provider) Checkpoint() (err error) {
 
 	p.log.Printf("CP %v END", at)
 
-	return
-}
+	p.last = p.ctr.Value()
 
-func (p *Provider) record(tx *lease.Tx) {
-	for _, op := range tx.Ops() {
-		if op.Type == lease.Update && op.UpdateType() == lease.Renew {
-			// Don't record renewals
-			continue
-		}
-		for _, effect := range op.Effects() {
-			if !effect.Consumptive() {
-				// Only record effects that affect consumption
-				continue
-			}
-			p.log.Printf("TX %s", effect.String())
-		}
-	}
+	return
 }
