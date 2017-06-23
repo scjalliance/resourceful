@@ -67,8 +67,8 @@ func (t UpdateType) String() string {
 
 // Effect is an effect of a transaction.
 type Effect struct {
-	Lease
 	Action Action
+	Lease
 }
 
 // String returns a string representation of the effect.
