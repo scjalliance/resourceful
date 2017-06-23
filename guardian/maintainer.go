@@ -171,12 +171,15 @@ func (lm *LeaseMaintainer) close() {
 	lm.closed = true
 }
 
-// interval computes the interval until the next lease acquisition.
+// interval computes the amount of time to wait until the next lease
+// acquisition.
 //
 // acquired indicates whether we have acquired a lease.
 // online indicates indicates whether the server is currently online.
 // current is the most recent response without an error.
 func (lm *LeaseMaintainer) interval(acquired bool, online bool, current transport.AcquireResponse) (interval time.Duration) {
+	const transportTime = time.Millisecond * 800 // Ballpark guess at how long it takes to acquire a lease
+
 	defer func() {
 		if interval < lease.MinimumRefresh {
 			interval = lease.MinimumRefresh
@@ -190,29 +193,45 @@ func (lm *LeaseMaintainer) interval(acquired bool, online bool, current transpor
 
 	// We have a lease
 	interval = current.Lease.EffectiveRefresh()
+	now := time.Now()
 
 	// If the server went offline after we retreived a valid lease, use the
 	// effective refresh interval or our retry interval, whichever is
 	// less.
-	if !online {
-		if lm.retry < interval {
-			return lm.retry
-		}
-		return interval
+	if !online && lm.retry < interval {
+		interval = lm.retry
 	}
 
-	// If our lease is queued, take into consideration when the next
-	// lease decays
-	if current.Lease.Status == lease.Queued {
-		decay := current.Leases.DecayDuration(time.Now())
+	switch current.Lease.Status {
+	case lease.Active:
+		// If our lease is active make sure we try again before the current lease
+		// expires
+		exp := current.Lease.ExpirationTime()
+		if exp.After(now) {
+			remaining := exp.Sub(now)
+			if transportTime < remaining {
+				remaining = remaining - transportTime
+			} else {
+				remaining = 0
+			}
+			if remaining < interval {
+				interval = remaining
+			}
+		} else {
+			interval = 0
+		}
+	case lease.Queued:
+		// If our lease is queued, take into consideration when the next
+		// lease decays
+		decay := current.Leases.DecayDuration(now)
 		if decay > 0 && decay < interval {
 			interval = decay
 		}
 	}
 
+	// Under no circumstances should we hammer the server faster than
+	// the minimum refresh interval.
 	if interval < lease.MinimumRefresh {
-		// Under no circumstances should we hammer the server faster than
-		// the minimum refresh interval.
 		interval = lease.MinimumRefresh
 	}
 
