@@ -33,10 +33,12 @@ func daemon(command string, args []string) (err error) {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
 	var (
-		leaseStorage    = os.Getenv("LEASE_STORE")
-		boltPath        = os.Getenv("BOLT_PATH")
-		policyPath      = os.Getenv("POLICY_PATH")
-		transactionPath = os.Getenv("TRANSACTION_LOG")
+		leaseStorage          = os.Getenv("LEASE_STORE")
+		boltPath              = os.Getenv("BOLT_PATH")
+		policyPath            = os.Getenv("POLICY_PATH")
+		transactionPath       = os.Getenv("TRANSACTION_LOG")
+		checkpointScheduleStr = os.Getenv("CHECKPOINT_SCHEDULE")
+		checkpointSchedule    []logprov.Schedule
 	)
 
 	if leaseStorage == "" {
@@ -62,12 +64,21 @@ func daemon(command string, args []string) (err error) {
 	fs.StringVar(&boltPath, "boltpath", boltPath, "bolt database file path")
 	fs.StringVar(&policyPath, "policypath", policyPath, "policy directory path")
 	fs.StringVar(&transactionPath, "txlog", transactionPath, "transaction log file path")
+	fs.StringVar(&checkpointScheduleStr, "cpschedule", checkpointScheduleStr, "transaction checkpoint schedule")
 	fs.Parse(args)
 
 	policyPath, err = filepath.Abs(policyPath)
 	if err != nil {
 		logger.Printf("Invalid policy path directory \"%s\": %v", policyPath, err)
 		return
+	}
+
+	if checkpointScheduleStr != "" {
+		checkpointSchedule, err = logprov.ParseSchedule(checkpointScheduleStr)
+		if err != nil {
+			logger.Printf("Unable to parse transaction checkpoint schedule: %v", err)
+			return
+		}
 	}
 
 	logger.Println("Starting resourceful guardian daemon")
@@ -90,7 +101,7 @@ func daemon(command string, args []string) (err error) {
 
 	if txFile != nil {
 		txLogger := log.New(txFile, "", log.LstdFlags)
-		leaseProvider = logprov.New(leaseProvider, txLogger)
+		leaseProvider = logprov.New(leaseProvider, txLogger, checkpointSchedule...)
 	}
 
 	defer closeProvider(leaseProvider, "lease", logger)
