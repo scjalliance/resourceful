@@ -64,6 +64,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("/health", http.HandlerFunc(s.healthHandler))
+	mux.Handle("/policies", http.HandlerFunc(s.policiesHandler))
 	mux.Handle("/leases", http.HandlerFunc(s.leasesHandler))
 	mux.Handle("/acquire", http.HandlerFunc(s.acquireHandler))
 	mux.Handle("/release", http.HandlerFunc(s.releaseHandler))
@@ -108,6 +109,27 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
 		return
 	}
+	fmt.Fprintf(w, string(data))
+}
+
+// policiesHandler will return the complete set of policies.
+func (s *Server) policiesHandler(w http.ResponseWriter, r *http.Request) {
+	policies, err := s.PolicyProvider.Policies()
+	if err != nil {
+		printf(s.Logger, "Policy retrieval failed: %v\n", err)
+		http.Error(w, "Unable to retrieve policies", http.StatusInternalServerError)
+		return
+	}
+
+	response := transport.PoliciesResponse{
+		Policies: policies,
+	}
+	data, err := json.MarshalIndent(response, "", "\t")
+	if err != nil {
+		http.Error(w, "Unable to marshal policies", http.StatusInternalServerError)
+		return
+	}
+
 	fmt.Fprintf(w, string(data))
 }
 

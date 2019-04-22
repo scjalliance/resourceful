@@ -4,6 +4,7 @@ package transport
 import (
 	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/lease"
+	"github.com/scjalliance/resourceful/policy"
 )
 
 // Request represents a request from a resourceful client.
@@ -17,6 +18,11 @@ type Request struct {
 // HealthResponse reports the health of a guardian server.
 type HealthResponse struct {
 	OK bool `json:"ok"`
+}
+
+// PoliciesResponse returns the current sef of policies.
+type PoliciesResponse struct {
+	Policies policy.Set `json:"policies"`
 }
 
 // LeasesResponse reports the current sef of leases for a resource.
