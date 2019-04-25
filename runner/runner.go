@@ -43,8 +43,9 @@ type Runner struct {
 //
 // If the given set of guardian server addresses is empty the servers will be
 // detected via service discovery.
-func New(config Config) (*Runner, error) {
+func New(client *guardian.Client, config Config) (*Runner, error) {
 	r := &Runner{
+		client: client,
 		config: config,
 		retry:  time.Second * 5,
 		icon:   leaseui.DefaultIcon(),
@@ -60,16 +61,6 @@ func (r *Runner) init() (err error) {
 	if err != nil {
 		return fmt.Errorf("runner: unable to detect environment: %v", err)
 	}
-
-	if len(r.config.Servers) == 0 {
-		r.client, err = guardian.NewClient("resourceful")
-	} else {
-		r.client, err = guardian.NewClientWithServers(r.config.Servers)
-	}
-	if err != nil {
-		return fmt.Errorf("runner: unable to create resourceful guardian client: %v", err)
-	}
-
 	return
 }
 

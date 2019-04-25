@@ -7,5 +7,4 @@ type Config struct {
 	Icon    *leaseui.Icon
 	Program string
 	Args    []string
-	Servers []string
 }

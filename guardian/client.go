@@ -2,93 +2,74 @@ package guardian
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"net"
-	"net/http"
-	"net/url"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/gentlemanautomaton/serviceresolver"
 	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian/transport"
 )
 
-type serviceSelection struct {
-	Service int
-	Addr    int
-}
-
 // Client coordinates resource leasing with a resourceful guardian server.
 type Client struct {
-	service  string
-	services []serviceresolver.Service
-	endpoint string
+	endpoints []Endpoint
+	endpoint  Endpoint
 }
 
-// NewClient creates a new guardian client that will resolve services for the
-// given service name.
-//
-// TODO:
-// Query the health of multiple servers in parallel, probably with a
-// 50ms delay between each, in order to proactively locate a functional
-// endpoint.
-//
-// TODO:
-// Break service resolution out into its own thing that plugs into a client.
-func NewClient(service string) (*Client, error) {
-	ctx := context.TODO()
-
-	services, err := serviceresolver.DefaultResolver.Resolve(ctx, service)
-	if err != nil {
-		return nil, fmt.Errorf("client: %v", err)
+// NewClient creates a new guardian client that relies on the given endpoints.
+func NewClient(endpoints ...Endpoint) (*Client, error) {
+	c := &Client{
+		endpoints: endpoints,
 	}
-	if len(services) == 0 {
-		return nil, errors.New("Unable to detect host domain")
+	if err := c.SelectEndpoint(); err != nil {
+		return nil, err
 	}
-
-	return &Client{
-		service:  service,
-		services: services,
-	}, nil
+	return c, nil
 }
 
-// NewClientWithServers creates a new guardian client that will use the given
-// list of guardian servers.
-func NewClientWithServers(servers []string) (client *Client, err error) {
-	var services []serviceresolver.Service
-	for _, server := range servers {
-		var (
-			target string
-			port   uint16
-		)
-		target, port, err = splitTargetPort(server)
-		if err != nil {
-			return
+// SelectEndpoint looks for a healthy endpoint and selects the first one that
+// it finds for use in future queries. It returns an error if it failed to
+// contact one.
+func (c *Client) SelectEndpoint() error {
+	const rounds = 2
+
+	var failed []error
+	for round := 0; round < rounds; round++ {
+		timeout := DefaultHealthTimeout * time.Duration(round+1)
+		for _, endpoint := range c.endpoints {
+			health, err := endpoint.HealthWithTimeout(timeout)
+			if err != nil {
+				failed = append(failed, err)
+				continue
+			}
+			if !health.OK {
+				continue
+			}
+			c.endpoint = endpoint
+			return nil
 		}
-		services = append(services, serviceresolver.Service{
-			Addrs: []*net.SRV{
-				&net.SRV{
-					Target: target,
-					Port:   port,
-				},
-			},
-		})
 	}
-	if len(services) == 0 {
-		return nil, errors.New("no services specified")
+
+	const task = "endpoint selection"
+
+	f := len(failed)
+	switch {
+	case f == 1:
+		return fmt.Errorf("%s failed: %v", task, failed[0])
+	case f > 1:
+		return fmt.Errorf("%s failed: %d attempts to connect to %d servers failed: %v", task, f, len(c.endpoints), failed[0])
+	default:
+		return fmt.Errorf("%s failed: no servers available", task)
 	}
-	return &Client{
-		services: services,
-	}, nil
 }
 
 // Acquire will attempt to acquire a lease for the given resource and consumer.
 func (c *Client) Acquire(resource, consumer, instance string, env environment.Environment) (response transport.AcquireResponse, err error) {
-	err = c.query("acquire", resource, consumer, instance, env, &response)
+	response, err = c.endpoint.Acquire(resource, consumer, instance, env)
+	if err != nil {
+		if c.SelectEndpoint() == nil {
+			response, err = c.endpoint.Acquire(resource, consumer, instance, env)
+		}
+	}
 	return
 }
 
@@ -106,100 +87,11 @@ func (c *Client) Maintain(ctx context.Context, resource, consumer, instance stri
 
 // Release will attempt to remove the lease for the given resource and consumer.
 func (c *Client) Release(resource, consumer, instance string) (response transport.ReleaseResponse, err error) {
-	err = c.query("release", resource, consumer, instance, nil, &response)
-	return
-}
-
-// query works through the services list in-order looking for a
-// service endpoint that can successfully service the query.
-func (c *Client) query(path string, resource, consumer, instance string, env environment.Environment, response interface{}) (err error) {
-	var failed []error
-
-	// Try to use the same endpoint as last time if we've already selected one
-	if len(c.endpoint) > 0 {
-		err = post(c.endpoint+path, resource, consumer, instance, env, response)
-		if err == nil {
-			return
-		}
-		failed = append(failed, err)
-	}
-
-	// Failover or initial selection
-	for _, service := range c.services {
-		for _, addr := range service.Addrs {
-			endpoint := "http://" + strings.TrimRight(addr.Target, ".") + ":" + strconv.Itoa((int)(addr.Port)) + "/"
-			err = post(endpoint+path, resource, consumer, instance, env, response)
-			if err == nil {
-				c.endpoint = endpoint
-				return
-			}
-			failed = append(failed, err)
-		}
-	}
-
-	f := len(failed)
-	switch {
-	case f == 1:
-		err = fmt.Errorf("%s failed: %v", path, failed[0])
-	case f > 1:
-		err = fmt.Errorf("%s failed: attempts to connect to %d servers failed, the last error was: %v", path, f, failed[f-1])
-	default:
-		err = fmt.Errorf("%s failed: no servers available", path)
-	}
-
-	return
-}
-
-func post(address, resource, consumer, instance string, env environment.Environment, response interface{}) (err error) {
-	v := url.Values{}
-	if resource != "" {
-		v.Set("resource", resource)
-	}
-	if consumer != "" {
-		v.Set("consumer", consumer)
-	}
-	if instance != "" {
-		v.Set("instance", instance)
-	}
-	if env != nil {
-		for key, value := range env {
-			v.Set(key, value)
-		}
-	}
-	r, err := http.PostForm(address, v)
+	response, err = c.endpoint.Release(resource, consumer, instance)
 	if err != nil {
-		return
-	}
-
-	defer r.Body.Close()
-
-	if r.StatusCode != 200 {
-		err = fmt.Errorf("http status: %v", r.Status)
-		return
-	}
-
-	err = json.NewDecoder(r.Body).Decode(response)
-
-	return
-}
-
-func splitTargetPort(addr string) (target string, port uint16, err error) {
-	target = addr
-	port = uint16(DefaultPort)
-
-	if strings.Contains(addr, ":") {
-		var p1 string
-		var p2 uint64
-		target, p1, err = net.SplitHostPort(addr)
-		if err != nil {
-			return
+		if c.SelectEndpoint() == nil {
+			response, err = c.endpoint.Release(resource, consumer, instance)
 		}
-		p2, err = strconv.ParseUint(p1, 10, 16)
-		if err != nil {
-			return
-		}
-		port = uint16(p2)
 	}
-
 	return
 }
