@@ -62,6 +62,17 @@ func (c *Client) SelectEndpoint() error {
 	}
 }
 
+// Policies will attempt to remove the lease for the given resource and consumer.
+func (c *Client) Policies() (response transport.PoliciesResponse, err error) {
+	response, err = c.endpoint.Policies()
+	if err != nil {
+		if c.SelectEndpoint() == nil {
+			response, err = c.endpoint.Policies()
+		}
+	}
+	return
+}
+
 // Acquire will attempt to acquire a lease for the given resource and consumer.
 func (c *Client) Acquire(resource, consumer, instance string, env environment.Environment) (response transport.AcquireResponse, err error) {
 	response, err = c.endpoint.Acquire(resource, consumer, instance, env)

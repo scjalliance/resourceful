@@ -27,6 +27,11 @@ func (e Endpoint) HealthWithTimeout(timeout time.Duration) (response transport.H
 	return response, e.getWithTimeout("health", &response, timeout)
 }
 
+// Policies returns the current set of policies from the endpoint.
+func (e Endpoint) Policies() (response transport.PoliciesResponse, err error) {
+	return response, e.get("policies", &response)
+}
+
 // Leases returns the current set of leases for a resource from the endpoint.
 func (e Endpoint) Leases(resource string) (response transport.PoliciesResponse, err error) {
 	return response, e.get("leases", &response)
