@@ -3,4 +3,4 @@
 
 package main
 
-//go:generate goversioninfo -icon=icon.ico -manifest resourceful.manifest -o resourceful.syso
+//go:generate go run builder.go version.go
