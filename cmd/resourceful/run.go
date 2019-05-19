@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/gentlemanautomaton/serviceresolver"
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease/leaseui"
 	"github.com/scjalliance/resourceful/runner"
@@ -62,6 +61,9 @@ func run(args []string) {
 	}
 }
 
+// splitEndpointArgs extracts a single -s argument from the start of the arg
+// list if present and interpets it as a guardian endpoint. Any remaining
+// arguments are returned and will be passed to the executable being run.
 func splitEndpointArgs(combined []string) (endpoints []guardian.Endpoint, args []string) {
 	args = combined
 	for len(args) > 2 && args[0] == "-s" && args[1] != "" {
@@ -69,21 +71,4 @@ func splitEndpointArgs(combined []string) (endpoints []guardian.Endpoint, args [
 		args = args[2:]
 	}
 	return
-}
-
-func collectEndpoints(ctx context.Context) (endpoints []guardian.Endpoint, err error) {
-	services, err := serviceresolver.DefaultResolver.Resolve(ctx, "resourceful")
-	if err != nil {
-		return nil, fmt.Errorf("failed to locate resourceful endpoints: %v", err)
-	}
-	if len(services) == 0 {
-		return nil, errors.New("unable to detect host domain")
-	}
-	for _, service := range services {
-		for _, addr := range service.Addrs {
-			endpoint := guardian.Endpoint(fmt.Sprintf("http://%s:%d", addr.Target, addr.Port))
-			endpoints = append(endpoints, endpoint)
-		}
-	}
-	return endpoints, nil
 }
