@@ -16,8 +16,8 @@ ENV CGO_ENABLED=0
 # Exclude debugging symbols and set the netgo tag for Go-based DNS resolution
 ENV BUILD_FLAGS="-v -a -ldflags '-d -s -w' -tags netgo"
 
-RUN go-wrapper download
-RUN go-wrapper install
+RUN go get -d -v ./...
+RUN go install -v ./...
 
 # --------
 # Stage 2: Release
