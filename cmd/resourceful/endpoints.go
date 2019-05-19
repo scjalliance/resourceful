@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gentlemanautomaton/serviceresolver"
 	"github.com/scjalliance/resourceful/guardian"
@@ -19,7 +20,7 @@ func collectEndpoints(ctx context.Context) (endpoints []guardian.Endpoint, err e
 	}
 	for _, service := range services {
 		for _, addr := range service.Addrs {
-			endpoint := guardian.Endpoint(fmt.Sprintf("http://%s:%d", addr.Target, addr.Port))
+			endpoint := guardian.Endpoint(fmt.Sprintf("http://%s:%d", strings.TrimSuffix(addr.Target, "."), addr.Port))
 			endpoints = append(endpoints, endpoint)
 		}
 	}
