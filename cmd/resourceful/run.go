@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/scjalliance/resourceful/guardian"
@@ -17,7 +16,7 @@ func runError(err error) {
 	os.Exit(2)
 }
 
-func run(args []string) {
+func run(ctx context.Context, args []string) {
 	if len(args) == 0 {
 		runError(errors.New("no executable path provided to run"))
 	}
@@ -26,15 +25,6 @@ func run(args []string) {
 	program := args[0]
 	args = args[1:]
 	icon := programIcon()
-
-	logger := log.New(os.Stderr, "", log.LstdFlags)
-
-	ctx, shutdown := context.WithCancel(context.Background())
-	defer shutdown()
-	go func() {
-		waitForSignal(logger)
-		shutdown()
-	}()
 
 	config := runner.Config{
 		Icon:    icon,

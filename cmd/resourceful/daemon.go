@@ -27,10 +27,8 @@ const (
 	defaultTransactionPath = "resourceful.tx.log"
 )
 
-func daemon(command string, args []string) (err error) {
+func daemon(ctx context.Context, logger *log.Logger, command string, args []string) (err error) {
 	prepareConsole(false)
-
-	logger := log.New(os.Stderr, "", log.LstdFlags)
 
 	var (
 		leaseStorage          = os.Getenv("LEASE_STORE")
@@ -135,13 +133,6 @@ func daemon(command string, args []string) (err error) {
 	default:
 		logger.Printf("%d policies loaded", count)
 	}
-
-	ctx, shutdown := context.WithCancel(context.Background())
-	defer shutdown()
-	go func() {
-		waitForSignal(logger)
-		shutdown()
-	}()
 
 	err = guardian.Run(ctx, cfg)
 

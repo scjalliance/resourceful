@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
+	"syscall"
+
+	"github.com/gentlemanautomaton/signaler"
 )
 
 func usage(errmsg string) {
@@ -21,16 +25,31 @@ func main() {
 		usage("No command specified.")
 	}
 
+	// Prepare a logger that prints to stderr
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+
+	// Shutdown when we receive a termination signal
+	shutdown := signaler.New().Capture(os.Interrupt, syscall.SIGTERM)
+
+	// Ensure that we cleanup even if we panic
+	defer shutdown.Trigger()
+
+	// Announce termination
+	announcement := shutdown.Then(func() { logger.Println("Received termination signal") })
+
+	// Cancel a context after the announcement
+	ctx := announcement.Context()
+
 	command := strings.ToLower(os.Args[1])
 	args := os.Args[2:]
 
 	switch command {
 	case "run":
-		run(args)
+		run(ctx, args)
 	case "list":
-		list(args)
+		list(ctx, args)
 	case "daemon", "guardian":
-		err := daemon(strings.Join(os.Args[0:2], " "), args)
+		err := daemon(ctx, logger, strings.Join(os.Args[0:2], " "), args)
 		if err != nil {
 			os.Exit(2)
 		}

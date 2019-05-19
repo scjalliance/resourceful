@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/scjalliance/resourceful/strategy"
 )
 
-func list(args []string) {
+func list(ctx context.Context, args []string) {
 	prepareConsole(false)
 
 	var criteria policy.Criteria
