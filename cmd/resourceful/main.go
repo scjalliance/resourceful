@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
 	"github.com/gentlemanautomaton/signaler"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 func usage(errmsg string) {
@@ -21,8 +23,38 @@ func usage(errmsg string) {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		usage("No command specified.")
+	app := kingpin.New(filepath.Base(os.Args[0]), "Provides lease-based management of running programs.")
+	app.Interspersed(false)
+
+	var (
+		listCmd    = app.Command("list", "Lists running processes that match current policies.")
+		listServer = listCmd.Flag("server", "Guardian policy server host and port.").Short('s').String()
+	)
+
+	var (
+		runCmd     = app.Command("run", "Runs a program if a lease can be procured for it.")
+		runServer  = runCmd.Flag("server", "Guardian policy server host and port.").Short('s').String()
+		runProgram = runCmd.Arg("program", "program to run").Required().String()
+		runArgs    = runCmd.Arg("arguments", "program arguments").Strings()
+	)
+
+	var (
+		guardianCmd  = app.Command("guardian", "Runs a guardian policy server.")
+		leaseStorage = guardianCmd.Flag("leasestore", "lease storage type").Envar("LEASE_STORE").Default(defaultLeaseStorage).Enum("bolt", "memory")
+		boltPath     = guardianCmd.Flag("boltpath", "bolt database file path").Envar("BOLT_PATH").Default(defaultBoltPath).String()
+		policyPath   = guardianCmd.Flag("policypath", "policy directory path").Envar("POLICY_PATH").String()
+		txPath       = guardianCmd.Flag("txlog", "transaction log file path").Envar("TRANSACTION_LOG").Default(defaultTransactionPath).String()
+		schedule     = guardianCmd.Flag("cpschedule", "transaction checkpoint schedule").Envar("CHECKPOINT_SCHEDULE").String()
+	)
+
+	command, err := app.Parse(os.Args[1:])
+	if err != nil {
+		// Special GUI-based handling for run
+		if len(os.Args) > 1 && strings.EqualFold(os.Args[1], "run") {
+			runError(err)
+		}
+		prepareConsole(false)
+		app.Fatalf("%s, try --help", err)
 	}
 
 	// Prepare a logger that prints to stderr
@@ -40,20 +72,15 @@ func main() {
 	// Cancel a context after the announcement
 	ctx := announcement.Context()
 
-	command := strings.ToLower(os.Args[1])
-	args := os.Args[2:]
-
 	switch command {
-	case "run":
-		run(ctx, args)
-	case "list":
-		list(ctx, args)
-	case "daemon", "guardian":
-		err := daemon(ctx, logger, strings.Join(os.Args[0:2], " "), args)
+	case runCmd.FullCommand():
+		run(ctx, *runServer, *runProgram, *runArgs)
+	case listCmd.FullCommand():
+		list(ctx, *listServer)
+	case guardianCmd.FullCommand():
+		err := daemon(ctx, logger, *leaseStorage, *boltPath, *policyPath, *txPath, *schedule)
 		if err != nil {
 			os.Exit(2)
 		}
-	default:
-		usage(fmt.Sprintf("\"%s\" is an unrecognized command.", command))
 	}
 }

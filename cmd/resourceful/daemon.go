@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -27,24 +26,9 @@ const (
 	defaultTransactionPath = "resourceful.tx.log"
 )
 
-func daemon(ctx context.Context, logger *log.Logger, command string, args []string) (err error) {
+func daemon(ctx context.Context, logger *log.Logger, leaseStorage, boltPath, policyPath, txPath, schedule string) (err error) {
 	prepareConsole(false)
 
-	var (
-		leaseStorage          = os.Getenv("LEASE_STORE")
-		boltPath              = os.Getenv("BOLT_PATH")
-		policyPath            = os.Getenv("POLICY_PATH")
-		transactionPath       = os.Getenv("TRANSACTION_LOG")
-		checkpointScheduleStr = os.Getenv("CHECKPOINT_SCHEDULE")
-		checkpointSchedule    []logprov.Schedule
-	)
-
-	if leaseStorage == "" {
-		leaseStorage = defaultLeaseStorage
-	}
-	if boltPath == "" {
-		boltPath = defaultBoltPath
-	}
 	if policyPath == "" {
 		// Use the working directory as the default source for policy files
 		policyPath, err = os.Getwd()
@@ -53,17 +37,6 @@ func daemon(ctx context.Context, logger *log.Logger, command string, args []stri
 			return
 		}
 	}
-	if transactionPath == "" {
-		transactionPath = defaultTransactionPath
-	}
-
-	fs := flag.NewFlagSet(command, flag.ExitOnError)
-	fs.StringVar(&leaseStorage, "leasestore", leaseStorage, "lease storage type [\"bolt\", \"memory\"]")
-	fs.StringVar(&boltPath, "boltpath", boltPath, "bolt database file path")
-	fs.StringVar(&policyPath, "policypath", policyPath, "policy directory path")
-	fs.StringVar(&transactionPath, "txlog", transactionPath, "transaction log file path")
-	fs.StringVar(&checkpointScheduleStr, "cpschedule", checkpointScheduleStr, "transaction checkpoint schedule")
-	fs.Parse(args)
 
 	policyPath, err = filepath.Abs(policyPath)
 	if err != nil {
@@ -71,8 +44,9 @@ func daemon(ctx context.Context, logger *log.Logger, command string, args []stri
 		return
 	}
 
-	if checkpointScheduleStr != "" {
-		checkpointSchedule, err = logprov.ParseSchedule(checkpointScheduleStr)
+	var checkpointSchedule []logprov.Schedule
+	if schedule != "" {
+		checkpointSchedule, err = logprov.ParseSchedule(schedule)
 		if err != nil {
 			logger.Printf("Unable to parse transaction checkpoint schedule: %v", err)
 			return
@@ -82,7 +56,7 @@ func daemon(ctx context.Context, logger *log.Logger, command string, args []stri
 	logger.Println("Starting resourceful guardian daemon")
 	defer logger.Printf("Stopped resourceful guardian daemon")
 
-	txFile, err := createTransactionLog(transactionPath)
+	txFile, err := createTransactionLog(txPath)
 	if err != nil {
 		logger.Printf("Unable to open transaction log: %v", err)
 		return

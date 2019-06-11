@@ -16,28 +16,28 @@ func runError(err error) {
 	os.Exit(2)
 }
 
-func run(ctx context.Context, args []string) {
-	if len(args) == 0 {
+func run(ctx context.Context, server, program string, args []string) {
+	if program == "" {
 		runError(errors.New("no executable path provided to run"))
 	}
 
-	endpoints, args := splitEndpointArgs(args)
-	program := args[0]
-	args = args[1:]
+	var endpoints []guardian.Endpoint
+	if server != "" {
+		endpoints = append(endpoints, guardian.Endpoint(server))
+	} else {
+		var err error
+		endpoints, err = collectEndpoints(ctx)
+		if err != nil {
+			runError(err)
+		}
+	}
+
 	icon := programIcon()
 
 	config := runner.Config{
 		Icon:    icon,
 		Program: program,
 		Args:    args,
-	}
-
-	if len(endpoints) == 0 {
-		var err error
-		endpoints, err = collectEndpoints(ctx)
-		if err != nil {
-			runError(err)
-		}
 	}
 
 	client, err := guardian.NewClient(endpoints...)

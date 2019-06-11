@@ -1,4 +1,4 @@
 package main
 
 // Version is the current release version.
-const Version = "2019.5.8.1"
+const Version = "2019.6.10.0"

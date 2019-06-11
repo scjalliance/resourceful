@@ -11,7 +11,7 @@ import (
 	"github.com/scjalliance/resourceful/strategy"
 )
 
-func list(ctx context.Context, args []string) {
+func list(ctx context.Context, server string) {
 	prepareConsole(false)
 
 	var criteria policy.Criteria
