@@ -7,11 +7,11 @@ import (
 	"github.com/scjalliance/resourceful/policy"
 )
 
-// Collect returns the set of running processes for which one or more policies
+// Scan returns the set of running processes for which one or more policies
 // should be applied.
 //
 // TODO: Accept an environment to be used in policy evaluation?
-func Collect(policies policy.Set) ([]winproc.Node, error) {
+func Scan(policies policy.Set) ([]winproc.Node, error) {
 	// Use resource criteria from the policies to build up a set of
 	// process filters
 	var filters []winproc.Filter
@@ -29,8 +29,7 @@ func Collect(policies policy.Set) ([]winproc.Node, error) {
 	// Build up a set of process collection options
 	opts := []winproc.CollectionOption{
 		winproc.IncludeAncestors,
-		winproc.CollectPaths,
-		winproc.CollectArgs,
+		winproc.CollectCommands,
 	}
 
 	for _, filter := range filters {
