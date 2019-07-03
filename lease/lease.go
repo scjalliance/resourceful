@@ -1,7 +1,6 @@
 package lease
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
@@ -121,8 +120,12 @@ func (ls *Lease) ResourceName() string {
 
 // Subject returns a string identifying the subject of the lease, which
 // includes the instance, consumer and resource.
-func (ls *Lease) Subject() string {
-	return fmt.Sprintf("%s %s %s", ls.Instance, ls.Consumer, ls.Resource)
+func (ls *Lease) Subject() Subject {
+	return Subject{
+		Resource: ls.Resource,
+		Consumer: ls.Consumer,
+		Instance: ls.Instance,
+	}
 }
 
 // Clone returns a deep copy of the lease.
