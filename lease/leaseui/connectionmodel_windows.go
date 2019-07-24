@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lxn/walk"
-	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
 )
 
@@ -16,25 +15,24 @@ import (
 // single goroutine, such as the Sync function.
 type ConnectionModel struct {
 	Config
-	lease lease.Lease // The last successful lease acquisition
-	err   error       // The last connection error received
+	state lease.State
 
 	updatePublisher  walk.EventPublisher
 	refreshPublisher walk.EventPublisher
 }
 
 // NewConnectionModel returns a connection dialog view model.
-func NewConnectionModel(config Config, ls lease.Lease) *ConnectionModel {
+func NewConnectionModel(config Config, state lease.State) *ConnectionModel {
 	m := &ConnectionModel{
 		Config: config,
-		lease:  ls,
+		state:  state,
 	}
 	return m
 }
 
 // ResourceName returns the user-friendly name of the resource.
 func (m *ConnectionModel) ResourceName() string {
-	name := m.lease.ResourceName()
+	name := m.state.Lease.ResourceName()
 	if name != "" {
 		return name
 	}
@@ -44,18 +42,17 @@ func (m *ConnectionModel) ResourceName() string {
 
 // Lease returns the current content of the model.
 func (m *ConnectionModel) Lease() lease.Lease {
-	return m.lease
+	return m.state.Lease
 }
 
 // Error returns the last connection error.
 func (m *ConnectionModel) Error() error {
-	return m.err
+	return m.state.Err
 }
 
 // Update will replace the current model's lease response with the one provided.
-func (m *ConnectionModel) Update(ls lease.Lease, acquisition guardian.Acquisition) {
-	m.lease = ls
-	m.err = acquisition.Err
+func (m *ConnectionModel) Update(state lease.State) {
+	m.state = state
 	m.updatePublisher.Publish()
 }
 
@@ -82,7 +79,7 @@ func (m *ConnectionModel) Close() {
 // rounded to the nearest whole second.
 func (m *ConnectionModel) TimeRemaining() (remaining time.Duration) {
 	now := time.Now().Round(time.Second)
-	expiration := m.lease.ExpirationTime().Round(time.Second)
+	expiration := m.state.Lease.ExpirationTime().Round(time.Second)
 	if now.After(expiration) {
 		return
 	}

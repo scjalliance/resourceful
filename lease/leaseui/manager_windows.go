@@ -104,8 +104,8 @@ func (m *Manager) connectionModel() (model *ConnectionModel) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	model = NewConnectionModel(m.cfg, m.lease)
-	model.Update(m.lease, m.acquisition)
+	model = NewConnectionModel(m.cfg, m.state)
+	model.Update(m.state)
 	m.model = model
 
 	return
@@ -115,8 +115,8 @@ func (m *Manager) queuedModel() (model *QueuedModel) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	model = NewQueuedModel(m.cfg, m.acquisition)
-	model.Update(m.lease, m.acquisition)
+	model = NewQueuedModel(m.cfg, m.state)
+	model.Update(m.state)
 	m.model = model
 
 	return

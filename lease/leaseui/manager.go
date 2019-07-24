@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
 )
 
@@ -14,14 +13,13 @@ type Manager struct {
 	cfg   Config
 	ready chan struct{}
 
-	mutex       sync.RWMutex
-	running     bool
-	primed      bool
-	current     Type
-	ch          chan Directive
-	lease       lease.Lease
-	acquisition guardian.Acquisition
-	model       Model
+	mutex   sync.RWMutex
+	running bool
+	primed  bool
+	current Type
+	ch      chan Directive
+	state   lease.State
+	model   Model
 }
 
 // New creates a new lease user interface manager.
@@ -131,12 +129,11 @@ func (m *Manager) CompareAndChange(from Type, to Type, callback Callback) {
 }
 
 // Update will update the user interface with the given acquisition.
-func (m *Manager) Update(ls lease.Lease, acquisition guardian.Acquisition) {
+func (m *Manager) Update(state lease.State) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	m.lease = ls
-	m.acquisition = acquisition
+	m.state = state
 
 	if !m.primed {
 		m.primed = true
@@ -144,7 +141,7 @@ func (m *Manager) Update(ls lease.Lease, acquisition guardian.Acquisition) {
 	}
 
 	if m.model != nil {
-		m.model.Update(m.lease, m.acquisition)
+		m.model.Update(m.state)
 	}
 }
 

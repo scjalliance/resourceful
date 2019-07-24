@@ -26,10 +26,7 @@ type Runner struct {
 	retry     time.Duration
 	icon      *leaseui.Icon
 	client    *guardian.Client
-	online    bool
-	acquired  bool // Have we ever acquired a lease?
 	running   bool
-	current   lease.Lease
 	failed    bool // Have we lost connection?
 	warned    bool // Has the user been warned about a connection loss?
 	restored  bool // Are we waiting for the user to acknowledge that the connection was restored?
@@ -100,39 +97,49 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 
 func (r *Runner) run(ctx context.Context) (err error) {
 	ctx, shutdown := context.WithCancel(ctx)
-	maintainer := r.client.Maintain(ctx, r.config.Program, r.consumer, r.instance, r.env, r.retry)
+	maintainer := guardian.NewLeaseMaintainer(r.client, r.config.Program, r.consumer, r.instance, r.env, r.retry)
 	defer shutdown() // Make sure the lease maintainer is shut down if there's an error
+
+	go func() {
+		<-ctx.Done()
+		maintainer.Close()
+	}()
+
+	if err := maintainer.Start(); err != nil {
+		return err
+	}
 
 	ch := maintainer.Listen(1)
 
+	var last lease.State
 	for {
-		response, ok := <-ch
+		state, ok := <-ch
 		if !ok {
 			return nil
 		}
 
-		r.mutex.Lock()
-
-		if response.Err == nil {
-			r.setOnline(true)
-			r.acquired = true
-			r.current = response.Lease
-		} else {
-			r.setOnline(false)
+		if last.Online != state.Online {
+			if state.Online {
+				log.Printf("Connection online")
+			} else {
+				log.Printf("Connection offline")
+			}
 		}
+		last = state
 
-		r.ui.Update(r.current, response)
+		r.mutex.Lock()
+		r.ui.Update(state)
 
-		if response.Err != nil {
-			err = r.handleError(ctx, response, shutdown)
+		if state.Err != nil {
+			err = r.handleError(ctx, state, shutdown)
 		} else {
-			switch response.Lease.Status {
+			switch state.Lease.Status {
 			case lease.Queued:
 				err = r.handleQueued(ctx, shutdown)
 			case lease.Active:
 				err = r.handleActive(ctx, shutdown)
 			default:
-				err = fmt.Errorf("unexpected lease status: \"%s\"", response.Lease.Status)
+				err = fmt.Errorf("unexpected lease status: \"%s\"", state.Lease.Status)
 			}
 		}
 
@@ -145,30 +152,30 @@ func (r *Runner) run(ctx context.Context) (err error) {
 }
 
 // handleError processes lease retrieval errors.
-func (r *Runner) handleError(ctx context.Context, response guardian.Acquisition, shutdown context.CancelFunc) error {
+func (r *Runner) handleError(ctx context.Context, state lease.State, shutdown context.CancelFunc) error {
 	r.failed = true
 
 	if !r.running {
-		log.Printf("Lease acquisition failed: %v", response.Err)
+		log.Printf("Lease acquisition failed: %v", state.Err)
 		r.ui.Change(leaseui.Startup, r.startupCallback(shutdown))
 		return nil
 	}
 
-	log.Printf("Lease renewal failed: %v", response.Err)
+	log.Printf("Lease renewal failed: %v", state.Err)
 
 	now := time.Now()
-	if r.current.Expired(now) {
+	if state.Lease.Expired(now) {
 		log.Printf("Lease has expired. Shutting down %s", r.config.Program)
 		shutdown()
 		return nil
 	}
 
-	expiration := r.current.ExpirationTime()
+	expiration := state.Lease.ExpirationTime()
 	remaining := expiration.Sub(now)
 
 	log.Printf("Lease time remaining: %s", remaining.String())
 
-	if shouldWarn(r.current, now, r.dismissal) {
+	if shouldWarn(state.Lease, now, r.dismissal) {
 		log.Printf("Warning the user")
 		r.warned = true
 		r.ui.Change(leaseui.Disconnected, r.disconnectedCallback())
@@ -310,18 +317,6 @@ func (r *Runner) execute(ctx context.Context, completion context.CancelFunc) (er
 	}()
 
 	return nil
-}
-
-func (r *Runner) setOnline(online bool) {
-	if r.online == online {
-		return
-	}
-	if online {
-		log.Printf("Connection online")
-	} else {
-		log.Printf("Connection offline")
-	}
-	r.online = online
 }
 
 // shouldWarn returns true if the runner should display a connection dialog.

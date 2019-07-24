@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/lxn/walk"
-	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/policy"
 	"github.com/scjalliance/resourceful/strategy"
@@ -23,17 +22,17 @@ type QueuedModel struct {
 	mutex sync.RWMutex
 	walk.TableModelBase
 	walk.SorterBase
-	sortColumn  int
-	sortOrder   walk.SortOrder
-	acquisition guardian.Acquisition
-	closed      bool
+	sortColumn int
+	sortOrder  walk.SortOrder
+	state      lease.State
+	closed     bool
 }
 
 // NewQueuedModel returns a queued lease dialog view model.
-func NewQueuedModel(config Config, acquisition guardian.Acquisition) *QueuedModel {
+func NewQueuedModel(config Config, state lease.State) *QueuedModel {
 	m := &QueuedModel{
-		Config:      config,
-		acquisition: acquisition,
+		Config: config,
+		state:  state,
 	}
 	m.PublishRowsReset()
 	return m
@@ -44,11 +43,11 @@ func (m *QueuedModel) Consumed() uint {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
-	strat := m.acquisition.Lease.Strategy
+	strat := m.state.Lease.Strategy
 	if !strategy.Valid(strat) || strat == strategy.Empty {
 		strat = policy.DefaultStrategy
 	}
-	stats := m.acquisition.Leases.Stats()
+	stats := m.state.Leases.Stats()
 	return stats.Consumed(strat)
 }
 
@@ -57,7 +56,7 @@ func (m *QueuedModel) ResourceName() string {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
-	name := m.acquisition.Lease.ResourceName()
+	name := m.state.Lease.ResourceName()
 	if name != "" {
 		return name
 	}
@@ -66,9 +65,9 @@ func (m *QueuedModel) ResourceName() string {
 }
 
 // Update will replace the current model's lease response with the one provided.
-func (m *QueuedModel) Update(ls lease.Lease, acquisition guardian.Acquisition) {
+func (m *QueuedModel) Update(state lease.State) {
 	m.mutex.Lock()
-	m.acquisition = acquisition
+	m.state = state
 	m.mutex.Unlock()
 
 	m.mutex.RLock()
@@ -105,12 +104,12 @@ func (m *QueuedModel) Close() {
 
 // RowCount returns the number of rows in the model.
 func (m *QueuedModel) RowCount() int {
-	return len(m.acquisition.Leases)
+	return len(m.state.Leases)
 }
 
 // Value returns the value for the cell at the given row and column.
 func (m *QueuedModel) Value(row, col int) interface{} {
-	ls := m.acquisition.Leases[row]
+	ls := m.state.Leases[row]
 
 	switch col {
 	case 0:

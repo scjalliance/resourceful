@@ -82,7 +82,7 @@ func (dlg *QueuedDialog) title() string {
 
 // description returns the description for the dialog.
 func (dlg *QueuedDialog) description() string {
-	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", dlg.model.ResourceName(), dlg.model.Consumed(), dlg.model.acquisition.Lease.Limit)
+	return fmt.Sprintf("%s could not be started because %d of %d license(s) are in use.", dlg.model.ResourceName(), dlg.model.Consumed(), dlg.model.state.Lease.Limit)
 }
 
 // tableCaption returns the caption for the table.

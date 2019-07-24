@@ -128,6 +128,11 @@ func (ls *Lease) Subject() Subject {
 	}
 }
 
+// Specified returns true if the lease has a subject.
+func (ls *Lease) Specified() bool {
+	return ls.Resource != "" || ls.Consumer != "" || ls.Instance != ""
+}
+
 // Clone returns a deep copy of the lease.
 func Clone(from Lease) (to Lease) {
 	to.Resource = from.Resource

@@ -1,7 +1,6 @@
 package guardian
 
 import (
-	"context"
 	"sync"
 	"time"
 
@@ -17,10 +16,10 @@ type Acquisition struct {
 	Err error
 }
 
-// LeaseMaintainer will attempt to acquire and maintain a lease.
-//
-// A lease maintainer is created by calling Client.Maintain(), which accepts a
-// context. When the context is cancelled the lease maintainer will be closed.
+// LeaseMaintainer performs lease maintenance for a particular subject.
+// Once started, it acquires and maintains a lease as long as it is running
+// and can communicate with a guardian. When stopped it releases whatever
+// lease it might hold.
 type LeaseMaintainer struct {
 	client   *Client
 	resource string
@@ -30,15 +29,26 @@ type LeaseMaintainer struct {
 	retry    time.Duration // 0 == no retry
 	// maxRetries?
 
-	mutex     sync.RWMutex
-	current   Acquisition
-	listeners []chan Acquisition
-	ready     bool
-	closed    bool
+	opMutex  sync.RWMutex
+	shutdown chan struct{}
+	stopped  chan struct{}
+
+	stateMutex sync.RWMutex
+	state      lease.State
+	listeners  []chan lease.State
 }
 
-func newLeaseMaintainer(ctx context.Context, client *Client, resource, consumer, instance string, env environment.Environment, retry time.Duration) *LeaseMaintainer {
-	lm := &LeaseMaintainer{
+// NewLeaseMaintainer returns a maintainer that is capable of maintaining a
+// lease for the given subject. The result of each acquisition or observation
+// will be returned to all listeners registered through calls to Listen().
+//
+// If retry is a non-zero duration the maintainer will attempt to acquire a
+// lease on an interval of retry.
+//
+// It is the caller's responsibility to close the lease maintainer when
+// finished with it.
+func NewLeaseMaintainer(client *Client, resource, consumer, instance string, env environment.Environment, retry time.Duration) *LeaseMaintainer {
+	return &LeaseMaintainer{
 		client:   client,
 		resource: resource,
 		consumer: consumer,
@@ -46,129 +56,186 @@ func newLeaseMaintainer(ctx context.Context, client *Client, resource, consumer,
 		env:      env,
 		retry:    retry,
 	}
-	go lm.run(ctx, client)
-	return lm
 }
 
-// Listen returns a channel on which lease acquisitions will be broadcast.
+// Start causes the maintainer to acquire and maintain a lease.
+func (lm *LeaseMaintainer) Start() error {
+	lm.opMutex.Lock()
+	defer lm.opMutex.Unlock()
+
+	if lm.shutdown != nil {
+		return ErrStarted
+	}
+
+	lm.shutdown = make(chan struct{})
+	lm.stopped = make(chan struct{})
+
+	go lm.run(lm.shutdown, lm.stopped)
+
+	return nil
+}
+
+// Stop causes the maintainer to stop maintenance of its lease and to release
+// any lease that it might hold.
 //
-// If the lease maintainer has already received the result of an acquisition,
-// the most recent acquisition will be returned on the channel immediately.
-//
-// It is important that the caller drains acquisitions from the channel in a
-// timely manner. Failure to do so will cause the lease maintainer to block
-// until the channel's buffer is no longer full.
-//
-// The provided buffer size will be used for the returned channel.
-//
-// When the lease maintainer is closed the returned channel will also be closed.
-// If the lease maintainer has already been closed a closed channel will
-// be returned.
-func (lm *LeaseMaintainer) Listen(bufferSize int) (ch <-chan Acquisition) {
-	listener := make(chan Acquisition, bufferSize)
+// Stop does not close the channels of any registered listeners. To close
+// all registered listeners call Close instead.
+func (lm *LeaseMaintainer) Stop() error {
+	lm.opMutex.Lock()
+	defer lm.opMutex.Unlock()
 
-	lm.mutex.Lock()
-	if lm.closed {
-		lm.mutex.Unlock()
-		close(listener)
-		return listener
-	}
-
-	lm.listeners = append(lm.listeners, listener)
-
-	if lm.ready {
-		go func() {
-			defer lm.mutex.Unlock()
-			listener <- lm.current
-		}()
-	} else {
-		lm.mutex.Unlock()
-	}
-
-	return listener
+	return lm.stop()
 }
 
-func (lm *LeaseMaintainer) run(ctx context.Context, client *Client) {
-	defer lm.close()
-
-	var (
-		acquired bool
-		current  transport.AcquireResponse
-	)
-
-	timer := time.NewTimer(0)
-	for {
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
-			lm.release()
-			return
-		case <-timer.C:
-			response, err := lm.acquire()
-			var online bool
-			if err == nil {
-				acquired = true
-				online = true
-				current = response
-			}
-			interval := lm.interval(acquired, online, current)
-			timer.Reset(interval)
-		}
+// stop tells the current run() goroutine to stop and then waits for it
+// to finish. The caller must hold a lock on the opMutex for the duration
+// of the call.
+func (lm *LeaseMaintainer) stop() error {
+	if lm.shutdown == nil {
+		return ErrClosed
 	}
+
+	close(lm.shutdown)
+	<-lm.stopped // closed when lm.run exits
+
+	lm.shutdown = nil
+	lm.stopped = nil
+	lm.state.Online = false
+
+	return nil
 }
 
-func (lm *LeaseMaintainer) acquire() (response transport.AcquireResponse, err error) {
-	var listeners []chan Acquisition // Local copy to avoid holding a lock during broadcast
+// Close causes the maintainer to release any lease it might hold and close
+// all listener channels.
+func (lm *LeaseMaintainer) Close() error {
+	lm.opMutex.Lock()
+	defer lm.opMutex.Unlock()
 
-	response, err = lm.client.Acquire(lm.resource, lm.consumer, lm.instance, lm.env)
+	lm.stop()
 
-	acquisition := Acquisition{
-		AcquireResponse: response,
-		Err:             err,
-	}
-
-	if err == nil {
-		lm.mutex.Lock()
-		listeners = make([]chan Acquisition, len(lm.listeners))
-		copy(listeners, lm.listeners)
-		lm.current = acquisition
-		lm.ready = true
-		lm.mutex.Unlock()
-	} else {
-		lm.mutex.RLock()
-		listeners = make([]chan Acquisition, len(lm.listeners))
-		copy(listeners, lm.listeners)
-		lm.mutex.RUnlock()
-	}
-
-	for _, listener := range listeners {
-		listener <- acquisition
-	}
-	return
-}
-
-func (lm *LeaseMaintainer) release() {
-	lm.client.Release(lm.resource, lm.consumer, lm.instance)
-	// TODO: Do something with the response?
-}
-
-func (lm *LeaseMaintainer) close() {
-	lm.mutex.Lock()
-	defer lm.mutex.Unlock()
-
-	if lm.closed {
-		// already closed
-		return
-	}
+	lm.stateMutex.Lock()
+	defer lm.stateMutex.Unlock()
 
 	for _, listener := range lm.listeners {
 		close(listener)
 	}
 
 	lm.listeners = nil
-	lm.closed = true
+
+	return nil
+}
+
+// State returns the current lease state.
+func (lm *LeaseMaintainer) State() lease.State {
+	lm.stateMutex.RLock()
+	defer lm.stateMutex.RUnlock()
+
+	return lm.state
+}
+
+// Listen returns a channel on which lease states will be broadcast.
+//
+// If the lease maintainer has already received the result of an acquisition,
+// the most recent state will be returned on the channel immediately.
+//
+// It is important that the caller drains states from the channel in a
+// timely manner. Failure to do so will cause the lease maintainer to block
+// until the channel's buffer is no longer full.
+//
+// The provided buffer size will be used for the returned channel.
+//
+// When the lease maintainer is closed the returned channel will also be closed.
+// If the lease maintainer has not yet been started a closed channel will
+// be returned.
+func (lm *LeaseMaintainer) Listen(bufferSize int) (ch <-chan lease.State) {
+	listener := make(chan lease.State, bufferSize)
+
+	lm.opMutex.RLock()
+	defer lm.opMutex.RUnlock()
+
+	if lm.shutdown == nil {
+		close(listener)
+		return listener
+	}
+
+	lm.stateMutex.Lock()
+	lm.listeners = append(lm.listeners, listener)
+	if lm.state.IsZero() {
+		lm.stateMutex.Unlock()
+	} else {
+		go func() {
+			defer lm.stateMutex.Unlock()
+			listener <- lm.state
+		}()
+	}
+
+	return listener
+}
+
+func (lm *LeaseMaintainer) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
+	defer close(stopped)
+
+	timer := time.NewTimer(0)
+	for {
+		select {
+		case <-shutdown:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			lm.release()
+			return
+		case <-timer.C:
+			state := lm.acquire()
+			interval := lm.interval(state)
+			timer.Reset(interval)
+		}
+	}
+}
+
+func (lm *LeaseMaintainer) acquire() lease.State {
+	response, err := lm.client.Acquire(lm.resource, lm.consumer, lm.instance, lm.env)
+
+	lm.stateMutex.Lock()
+	defer lm.stateMutex.Unlock()
+
+	if err == nil {
+		lm.state.Online = true
+		lm.state.Acquired = true
+		lm.state.Lease = response.Lease
+		lm.state.Leases = response.Leases
+		lm.state.Err = nil
+	} else {
+		lm.state.Online = false
+		lm.state.Err = err
+	}
+
+	for _, listener := range lm.listeners {
+		listener <- lm.state
+	}
+	return lm.state
+}
+
+func (lm *LeaseMaintainer) release() lease.State {
+	_, err := lm.client.Release(lm.resource, lm.consumer, lm.instance)
+
+	lm.stateMutex.Lock()
+	defer lm.stateMutex.Unlock()
+
+	if err == nil {
+		lm.state.Acquired = false
+		lm.state.Online = false
+	}
+
+	lm.state.Err = err
+
+	// TODO: Consider broadcasting the state change?
+	/*
+		for _, listener := range lm.listeners {
+			listener <- lm.state
+		}
+	*/
+
+	return lm.state
 }
 
 // interval computes the amount of time to wait until the next lease
@@ -177,7 +244,7 @@ func (lm *LeaseMaintainer) close() {
 // acquired indicates whether we have acquired a lease.
 // online indicates indicates whether the server is currently online.
 // current is the most recent response without an error.
-func (lm *LeaseMaintainer) interval(acquired bool, online bool, current transport.AcquireResponse) (interval time.Duration) {
+func (lm *LeaseMaintainer) interval(state lease.State) (interval time.Duration) {
 	const transportTime = time.Millisecond * 800 // Ballpark guess at how long it takes to acquire a lease
 
 	defer func() {
@@ -187,26 +254,26 @@ func (lm *LeaseMaintainer) interval(acquired bool, online bool, current transpor
 	}()
 
 	// If we haven't received a valid response yet use the retry interval
-	if !acquired {
+	if !state.Acquired {
 		return lm.retry
 	}
 
 	// We have a lease
-	interval = current.Lease.EffectiveRefresh()
+	interval = state.Lease.EffectiveRefresh()
 	now := time.Now()
 
 	// If the server went offline after we retreived a valid lease, use the
 	// effective refresh interval or our retry interval, whichever is
 	// less.
-	if !online && lm.retry < interval {
+	if !state.Online && lm.retry < interval {
 		interval = lm.retry
 	}
 
-	switch current.Lease.Status {
+	switch state.Lease.Status {
 	case lease.Active:
 		// If our lease is active make sure we try again before the current lease
 		// expires
-		exp := current.Lease.ExpirationTime()
+		exp := state.Lease.ExpirationTime()
 		if exp.After(now) {
 			remaining := exp.Sub(now)
 			if transportTime < remaining {
@@ -223,7 +290,7 @@ func (lm *LeaseMaintainer) interval(acquired bool, online bool, current transpor
 	case lease.Queued:
 		// If our lease is queued, take into consideration when the next
 		// lease decays
-		decay := current.Leases.DecayDuration(now)
+		decay := state.Leases.DecayDuration(now)
 		if decay > 0 && decay < interval {
 			interval = decay
 		}
