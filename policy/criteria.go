@@ -24,6 +24,15 @@ func (c Criteria) Match(resource, consumer string, env environment.Environment) 
 	return true
 }
 
+// String returns a string representation of the criteria.
+func (c Criteria) String() string {
+	parts := make([]string, 0, len(c))
+	for i := range c {
+		parts = append(parts, c[i].String())
+	}
+	return strings.Join(parts, "⋅")
+}
+
 // Criterion describes a single condition required for a policy to match.
 type Criterion struct {
 	Component  string `json:"component"`  // The operand of the comparison
@@ -64,4 +73,34 @@ func (c *Criterion) Match(resource string, consumer string, env environment.Envi
 	default:
 		return false
 	}
+}
+
+// String returns a string representation of the criterion.
+func (c *Criterion) String() string {
+	var output string
+
+	// Component
+	switch c.Component {
+	case ComponentEnvironment:
+		output = "env[" + c.Key + "]"
+	default:
+		output = c.Component
+	}
+
+	// Operator
+	switch c.Comparison {
+	case ComparisonExact:
+		output += "="
+	case ComparisonIgnoreCase:
+		output += "≈"
+	case ComparisonRegex:
+		output += "~"
+	default:
+		output += "." + c.Comparison + "."
+	}
+
+	// Value
+	output += c.Value
+
+	return output
 }

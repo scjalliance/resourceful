@@ -11,6 +11,46 @@ import (
 // Set is a set of policies.
 type Set []Policy
 
+// Diff returns the additions and deletions in next when compared with s.
+func (s Set) Diff(next Set) (additions, deletions Set) {
+	if s == nil {
+		additions = next
+		return
+	}
+
+	if next == nil {
+		deletions = s
+		return
+	}
+
+	var (
+		a = make(map[Hash]*Policy)
+		b = make(map[Hash]*Policy)
+	)
+
+	for i := range s {
+		a[s[i].Hash()] = &s[i]
+	}
+
+	for i := range next {
+		b[next[i].Hash()] = &next[i]
+	}
+
+	for key, pol := range a {
+		if _, exists := b[key]; !exists {
+			deletions = append(deletions, *pol)
+		}
+	}
+
+	for key, pol := range b {
+		if _, exists := a[key]; !exists {
+			additions = append(additions, *pol)
+		}
+	}
+
+	return
+}
+
 // Match returns the subset of policies which match the given parameters.
 func (s Set) Match(resource, consumer string, env environment.Environment) (matches Set) {
 	for p := range s {

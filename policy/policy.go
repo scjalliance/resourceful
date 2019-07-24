@@ -1,12 +1,16 @@
 package policy
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/strategy"
+	"golang.org/x/crypto/sha3"
 )
 
 // TODO: Use https://github.com/valyala/fasttemplate for consumer construction
@@ -110,4 +114,77 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 // All of the policy's conditions must match for the policy to be applied.
 func (p *Policy) Match(resource, consumer string, env environment.Environment) bool {
 	return p.Criteria.Match(resource, consumer, env)
+}
+
+// String returns a string representation of the policy.
+func (p *Policy) String() string {
+	var parts []string
+	if p.Resource != "" {
+		parts = append(parts, fmt.Sprintf("Resource: %q", p.Resource))
+	}
+	if p.Consumer != "" {
+		parts = append(parts, fmt.Sprintf("Consumer: %q", p.Consumer))
+	}
+	if len(p.Criteria) > 0 {
+		parts = append(parts, fmt.Sprintf("Criteria: %q", p.Criteria.String()))
+	}
+	if p.Strategy != "" {
+		parts = append(parts, fmt.Sprintf("Strategy: %s", p.Strategy))
+	}
+	if p.Limit != 0 {
+		parts = append(parts, fmt.Sprintf("Limit: %d", p.Limit))
+	}
+	if p.Duration != 0 {
+		parts = append(parts, fmt.Sprintf("Duration: %s", p.Duration))
+	}
+	if p.Decay != 0 {
+		parts = append(parts, fmt.Sprintf("Decay: %s", p.Decay))
+	}
+	if p.Refresh.Active != 0 {
+		parts = append(parts, fmt.Sprintf("Active Refresh: %s", p.Refresh.Active))
+	}
+	if p.Refresh.Queued != 0 {
+		parts = append(parts, fmt.Sprintf("Queued Refresh: %s", p.Refresh.Queued))
+	}
+	if len(p.Environment) > 0 {
+		parts = append(parts, fmt.Sprintf("Env: %q", p.Environment))
+	}
+	return strings.Join(parts, " ")
+}
+
+// Hash returns a 224-bit hash of the policy.
+func (p *Policy) Hash() Hash {
+	var (
+		hash = sha3.New224()
+		w    = hashWriter{bufio.NewWriterSize(hash, hash.BlockSize())}
+	)
+
+	w.WriteString(p.Resource)
+	w.WriteString(p.Consumer)
+	w.WriteInt(len(p.Environment))
+	for key, value := range p.Environment {
+		w.WriteString(key)
+		w.WriteString(value)
+	}
+	w.WriteInt(len(p.Criteria))
+	for _, c := range p.Criteria {
+		w.WriteString(c.Component)
+		w.WriteString(c.Key)
+		w.WriteString(c.Comparison)
+		w.WriteString(c.Value)
+	}
+	w.WriteString(string(p.Strategy))
+	w.WriteInt(int(p.Limit))
+	w.WriteDuration(p.Duration)
+	w.WriteDuration(p.Decay)
+	w.WriteDuration(p.Refresh.Active)
+	w.WriteDuration(p.Refresh.Queued)
+
+	if err := w.Flush(); err != nil {
+		panic(err)
+	}
+
+	var h Hash
+	hash.Sum(h[:0])
+	return h
 }
