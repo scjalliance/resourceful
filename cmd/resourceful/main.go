@@ -32,6 +32,12 @@ func main() {
 	)
 
 	var (
+		enforceCmd     = app.Command("enforce", "Enforces resourceful policies on the local machine.")
+		enforceServer  = enforceCmd.Flag("server", "Guardian policy server host and port.").Short('s').String()
+		enforcePassive = enforceCmd.Flag("passive", "Run passively without killing processes.").Bool()
+	)
+
+	var (
 		runCmd     = app.Command("run", "Runs a program if a lease can be procured for it.")
 		runServer  = runCmd.Flag("server", "Guardian policy server host and port.").Short('s').String()
 		runProgram = runCmd.Arg("program", "program to run").Required().String()
@@ -57,6 +63,11 @@ func main() {
 		app.Fatalf("%s, try --help", err)
 	}
 
+	interactive, err := isInteractive()
+	if err != nil {
+		app.Fatalf("%s", err)
+	}
+
 	// Prepare a logger that prints to stderr
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
@@ -77,6 +88,8 @@ func main() {
 		run(ctx, *runServer, *runProgram, *runArgs)
 	case listCmd.FullCommand():
 		list(ctx, *listServer)
+	case enforceCmd.FullCommand():
+		enforce(ctx, *enforceServer, interactive, *enforcePassive)
 	case guardianCmd.FullCommand():
 		err := daemon(ctx, logger, *leaseStorage, *boltPath, *policyPath, *txPath, *schedule)
 		if err != nil {
