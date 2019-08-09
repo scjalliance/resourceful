@@ -3,9 +3,9 @@
 package enforcer
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/gentlemanautomaton/winproc"
@@ -107,9 +107,12 @@ func makeMatcher(comparison, value string) (f matcherFunc, err error) {
 			return strings.EqualFold(fieldValue, value)
 		}, nil
 	case policy.ComparisonRegex:
-		re, err := regexp.Compile(value)
+		re, err := compileRegex(value)
 		if err != nil {
 			return nil, err
+		}
+		if re == nil {
+			return nil, errors.New("empty regular expression")
 		}
 		return func(fieldValue string) bool {
 			return re.MatchString(fieldValue)
