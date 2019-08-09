@@ -110,6 +110,8 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 		exited <- ref.Wait(ctx)
 	}()
 
+	var termPending bool
+
 	mp.maintainer.Start()
 	ch := mp.maintainer.Listen(1)
 	for {
@@ -117,11 +119,11 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 		case err := <-exited:
 			switch err {
 			case nil:
-				mp.log("Process exited: %s.\n", mp.proc.Name)
+				mp.log("Process exited: %s", mp.proc.Name)
 			case context.Canceled, context.DeadlineExceeded:
-				mp.log("Ceasing management of process: %s.\n", mp.proc.Name)
+				mp.log("Ceasing management of process: %s", mp.proc.Name)
 			default:
-				mp.log("Process observation failed: %s: %v\n", mp.proc.Name, err)
+				mp.log("Process observation failed: %s: %v", mp.proc.Name, err)
 				// FIXME: Continue holding a lease but release the reference?
 			}
 			go mp.maintainer.Close()
@@ -131,14 +133,29 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 			return
 		case state, ok := <-ch:
 			if !ok {
-				mp.log("Lease maintainer closed for %s\n", mp.proc.Name)
+				mp.log("Lease maintainer closed for %s", mp.proc.Name)
 				return
 			}
-			mp.log("Lease: %s\n", state.Lease.Subject())
+			if state.Acquired {
+				switch state.Lease.Status {
+				case lease.Active:
+					termPending = false
+					mp.log("Lease: %s", state.Lease.Subject())
+				case lease.Queued:
+					mp.log("Queued: %s", state.Lease.Subject())
+				}
+			}
 			if !state.Acquired || state.Lease.Status != lease.Active {
-				mp.log("Terminate: %s\n", mp.proc.Name)
+				if !termPending {
+					mp.log("Terminating %s", mp.proc.Name)
+				}
 				if err := ref.Terminate(5877); err != nil {
-					mp.log("Failed to terminate %s: %v\n", mp.proc.Name, err)
+					if !termPending {
+						mp.log("Failed to terminate %s: %v", mp.proc.Name, err)
+						termPending = true
+					}
+				} else {
+					mp.log("Terminated %s", mp.proc.Name)
 				}
 			}
 		}
