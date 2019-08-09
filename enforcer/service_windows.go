@@ -4,7 +4,6 @@ package enforcer
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -20,6 +19,7 @@ type Service struct {
 	policyInterval      time.Duration // Configuration polling interval
 	hostname            string
 	passive             bool // Don't kill processes if true
+	logger              Logger
 
 	polMutex sync.RWMutex
 	policies policy.Set
@@ -34,13 +34,14 @@ type Service struct {
 }
 
 // New returns a new policy monitor service with the given client.
-func New(client *guardian.Client, enforcementInterval, policyInterval time.Duration, hostname string, passive bool) *Service {
+func New(client *guardian.Client, enforcementInterval, policyInterval time.Duration, hostname string, passive bool, logger Logger) *Service {
 	return &Service{
 		client:              client,
 		enforcementInterval: enforcementInterval,
 		policyInterval:      policyInterval,
 		hostname:            hostname,
 		passive:             passive,
+		logger:              logger,
 		managed:             make(map[UniqueID]*ManagedProcess, 8),
 		skipped:             make(map[UniqueID]struct{}),
 	}
@@ -93,7 +94,7 @@ func (s *Service) Policies() policy.Set {
 func (s *Service) UpdatePolicies() {
 	response, err := s.client.Policies()
 	if err != nil {
-		s.logError(fmt.Sprintf("Failed to retrieve policies: %v", err.Error()))
+		s.log("Failed to retrieve policies: %v", err.Error())
 		return
 	}
 
@@ -103,15 +104,15 @@ func (s *Service) UpdatePolicies() {
 	s.polMutex.Unlock()
 
 	for _, pol := range additions {
-		s.logInfo(fmt.Sprintf("POL: ADD %s: %s", pol.Hash().String(), pol.String()))
+		s.log("POL: ADD %s: %s", pol.Hash().String(), pol.String())
 	}
 	for _, pol := range deletions {
-		s.logInfo(fmt.Sprintf("POL: REM %s: %s", pol.Hash().String(), pol.String()))
+		s.log("POL: REM %s: %s", pol.Hash().String(), pol.String())
 	}
 }
 
 func (s *Service) manage(p Process) {
-	s.logInfo(fmt.Sprintf("Starting management of %s", Subject(s.hostname, p)))
+	s.log("Starting management of %s", Subject(s.hostname, p))
 
 	id := p.UniqueID()
 
@@ -125,7 +126,7 @@ func (s *Service) manage(p Process) {
 
 	mp, err := Manage(s.client, s.hostname, p, s.passive)
 	if err != nil {
-		s.logError(fmt.Sprintf("Unable to manage process %s: %v", id, err))
+		s.log("Unable to manage process %s: %v", id, err)
 	}
 	s.managed[id] = mp
 }
@@ -149,7 +150,7 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 				return
 			case <-enforceTimer.C:
 				if err := s.Enforce(); err != nil {
-					s.logError(fmt.Sprintf("Enforcement failed: %s", err))
+					s.log("Enforcement failed: %s", err)
 				}
 			}
 		}
@@ -184,7 +185,7 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	for id, mp := range s.managed {
 		mp.Stop()
 		delete(s.managed, id)
-		s.logInfo(fmt.Sprintf("Stopped management of %s", Subject(s.hostname, mp.proc)))
+		s.log("Stopped management of %s", Subject(s.hostname, mp.proc))
 	}
 }
 
@@ -214,10 +215,10 @@ func (s *Service) Enforce() error {
 				mp.Stop()
 				delete(s.managed, id)
 				s.skipped[id] = struct{}{}
-				s.logInfo(fmt.Sprintf("Stopped management of blacklisted process: %s", Subject(s.hostname, proc)))
+				s.log("Stopped management of blacklisted process: %s", Subject(s.hostname, proc))
 			} else if _, exists := s.skipped[id]; !exists {
 				// Add to skipped
-				s.logInfo(fmt.Sprintf("Skipped management of blacklisted process: %s", Subject(s.hostname, proc)))
+				s.log("Skipped management of blacklisted process: %s", Subject(s.hostname, proc))
 				s.skipped[id] = struct{}{}
 			}
 			continue
@@ -248,7 +249,7 @@ func (s *Service) Enforce() error {
 			proc := s.managed[id].proc
 			s.managed[id].Stop() // If the process died this is redundant, but if it no longer needs a lease this cleans up the manager
 			delete(s.managed, id)
-			s.logInfo(fmt.Sprintf("Stopped management of %s", Subject(s.hostname, proc)))
+			s.log("Stopped management of %s", Subject(s.hostname, proc))
 		}
 	}
 
@@ -264,27 +265,27 @@ func (s *Service) Enforce() error {
 	}
 
 	// Begin management of newly discovered processes
-	s.logInfo(fmt.Sprintf("Enforcement found %d new processes", len(pending)))
+	s.log("Enforcement found %d new processes", len(pending))
 
 	for _, proc := range pending {
 		id := proc.UniqueID()
 		mp, err := Manage(s.client, s.hostname, proc, s.passive)
 		if err != nil {
-			s.logError(fmt.Sprintf("Unable to manage process %s: %v", id, err))
+			s.log("Unable to manage process %s: %v", id, err)
 			continue
 		}
 		s.managed[id] = mp
 
-		s.logInfo(fmt.Sprintf("Started management of %s", Subject(s.hostname, proc)))
+		s.log("Started management of %s", Subject(s.hostname, proc))
 	}
 
 	return nil
 }
 
-func (s *Service) logError(message string) {
-	fmt.Printf("ERROR: %s\n", message)
-}
-
-func (s *Service) logInfo(message string) {
-	fmt.Printf("INFO: %s\n", message)
+// TODO: Accept an event ID or event interface?
+func (s *Service) log(format string, v ...interface{}) {
+	// TODO: Try casting s.logger to a different interface so that we can log event IDs?
+	if s.logger != nil {
+		s.logger.Printf(format, v...)
+	}
 }

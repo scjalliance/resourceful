@@ -3,7 +3,6 @@
 package enforcer
 
 import (
-	"fmt"
 	"time"
 
 	"golang.org/x/sys/windows/svc"
@@ -35,7 +34,7 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 
 	// Start the service
 	if err := h.Service.Start(); err != nil {
-		h.Service.logError(fmt.Sprintf("Failed to start service: %v.", err))
+		h.Service.log("Failed to start service: %v.", err)
 		return
 	}
 
@@ -54,14 +53,14 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 			time.Sleep(100 * time.Millisecond)
 			changes <- req.CurrentStatus
 		case svc.Stop, svc.Shutdown:
-			h.Service.logInfo("Service shutting down.")
+			h.Service.log("Service shutting down.")
 			return
 		case svc.Pause:
-			h.Service.logInfo("Service paused.")
+			h.Service.log("Service paused.")
 			changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepted}
 			h.Service.Stop()
 		case svc.Continue:
-			h.Service.logInfo("Service unpaused.")
+			h.Service.log("Service unpaused.")
 			changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
 			h.Service.Start()
 		}
