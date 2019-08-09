@@ -15,6 +15,12 @@ import (
 func list(ctx context.Context, server string) {
 	prepareConsole(false)
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Printf("Failed to query local hostname: %v\n", err)
+		os.Exit(1)
+	}
+
 	policies, err := collectPolicies(ctx, server)
 	if err != nil {
 		fmt.Printf("Failed to collect resourceful policies: %v\n", err)
@@ -34,21 +40,22 @@ func list(ctx context.Context, server string) {
 
 	fmt.Printf("Processes:\n")
 	for _, process := range procs {
-		if matches := policies.Match(process.Resource, process.Consumer, process.Env()); len(matches) > 0 {
+		subject := enforcer.Subject(hostname, process)
+		if matches := policies.Match(subject.Resource, subject.Consumer, enforcer.Env(hostname, process)); len(matches) > 0 {
 			fmt.Printf("%s\n", process)
-			if resource := matches.Resource(); resource != "" && resource != process.Resource {
-				fmt.Printf("  Resource: %s (%s)\n", resource, process.Resource)
+			if resource := matches.Resource(); resource != "" && resource != subject.Resource {
+				fmt.Printf("  Resource: %s (%s)\n", resource, subject.Resource)
 			} else {
-				fmt.Printf("  Resource: %s\n", process.Resource)
+				fmt.Printf("  Resource: %s\n", subject.Resource)
 			}
 
-			if consumer := matches.Consumer(); consumer != "" && consumer != process.Consumer {
-				fmt.Printf("  Consumer: %s (%s)\n", consumer, process.Consumer)
+			if consumer := matches.Consumer(); consumer != "" && consumer != subject.Consumer {
+				fmt.Printf("  Consumer: %s (%s)\n", consumer, subject.Consumer)
 			} else {
-				fmt.Printf("  Consumer: %s\n", process.Consumer)
+				fmt.Printf("  Consumer: %s\n", subject.Consumer)
 			}
 
-			fmt.Printf("  Instance: %s\n", process.Instance)
+			fmt.Printf("  Instance: %s\n", subject.Instance)
 			fmt.Printf("  Limit: %d\n", matches.Limit())
 			fmt.Printf("  Duration: %s\n", matches.Duration())
 		}
