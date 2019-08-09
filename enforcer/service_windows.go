@@ -249,7 +249,7 @@ func (s *Service) Enforce() error {
 
 	for _, proc := range pending {
 		id := proc.UniqueID()
-		mp, err := Manage(s.client, s.hostname, proc, s.passive)
+		mp, err := Manage(s.client, s.hostname, proc, s.passive, s.logger)
 		if err != nil {
 			s.log("Unable to manage process %s: %v", id, err)
 			continue

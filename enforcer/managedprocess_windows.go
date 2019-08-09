@@ -19,6 +19,7 @@ import (
 type ManagedProcess struct {
 	proc       Process
 	maintainer *guardian.LeaseMaintainer
+	logger     Logger
 	stop       context.CancelFunc
 
 	mutex   sync.Mutex
@@ -27,7 +28,7 @@ type ManagedProcess struct {
 }
 
 // Manage performs lease management for the given process.
-func Manage(client *guardian.Client, hostname string, proc Process, passive bool) (*ManagedProcess, error) {
+func Manage(client *guardian.Client, hostname string, proc Process, passive bool, logger Logger) (*ManagedProcess, error) {
 	// Open a reference to the process with the highest level of privilege
 	// that we can get
 	ref, err := openProcess(proc.ID, passive)
@@ -59,6 +60,7 @@ func Manage(client *guardian.Client, hostname string, proc Process, passive bool
 	mp := &ManagedProcess{
 		proc:       proc,
 		maintainer: maintainer,
+		logger:     logger,
 		stop:       cancel,
 		stopped:    stopped,
 	}
@@ -115,11 +117,11 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 		case err := <-exited:
 			switch err {
 			case nil:
-				fmt.Printf("Process exited: %s.\n", mp.proc.Name)
+				mp.log("Process exited: %s.\n", mp.proc.Name)
 			case context.Canceled, context.DeadlineExceeded:
-				fmt.Printf("Ceasing management of process: %s.\n", mp.proc.Name)
+				mp.log("Ceasing management of process: %s.\n", mp.proc.Name)
 			default:
-				fmt.Printf("Process observation failed: %s: %v\n", mp.proc.Name, err)
+				mp.log("Process observation failed: %s: %v\n", mp.proc.Name, err)
 				// FIXME: Continue holding a lease but release the reference?
 			}
 			go mp.maintainer.Close()
@@ -129,16 +131,24 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 			return
 		case state, ok := <-ch:
 			if !ok {
-				fmt.Printf("Lease maintainer closed for %s\n", mp.proc.Name)
+				mp.log("Lease maintainer closed for %s\n", mp.proc.Name)
 				return
 			}
-			fmt.Printf("Lease: %s\n", state.Lease.Subject())
+			mp.log("Lease: %s\n", state.Lease.Subject())
 			if !state.Acquired || state.Lease.Status != lease.Active {
-				fmt.Printf("Terminate: %s\n", mp.proc.Name)
+				mp.log("Terminate: %s\n", mp.proc.Name)
 				if err := ref.Terminate(5877); err != nil {
-					fmt.Printf("Failed to terminate %s: %v\n", mp.proc.Name, err)
+					mp.log("Failed to terminate %s: %v\n", mp.proc.Name, err)
 				}
 			}
 		}
+	}
+}
+
+// TODO: Accept an event ID or event interface?
+func (mp *ManagedProcess) log(format string, v ...interface{}) {
+	// TODO: Try casting s.logger to a different interface so that we can log event IDs?
+	if mp.logger != nil {
+		mp.logger.Printf(format, v...)
 	}
 }
