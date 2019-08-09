@@ -111,26 +111,6 @@ func (s *Service) UpdatePolicies() {
 	}
 }
 
-func (s *Service) manage(p Process) {
-	s.log("Starting management of %s", Subject(s.hostname, p))
-
-	id := p.UniqueID()
-
-	s.managedMutex.Lock()
-	defer s.managedMutex.Unlock()
-
-	if _, exists := s.managed[id]; exists {
-		// Already managed
-		return
-	}
-
-	mp, err := Manage(s.client, s.hostname, p, s.passive)
-	if err != nil {
-		s.log("Unable to manage process %s: %v", id, err)
-	}
-	s.managed[id] = mp
-}
-
 func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	defer close(stopped)
 
