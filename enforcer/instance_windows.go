@@ -7,13 +7,23 @@ import (
 	"encoding/base64"
 
 	"github.com/gentlemanautomaton/winproc"
+	"github.com/scjalliance/resourceful/lease"
 	"golang.org/x/crypto/sha3"
 )
 
-// NewInstance generates an instance identifier for p.
+// Instance returns the lease instance for p.
+func Instance(host string, p winproc.Process, id string) lease.Instance {
+	return lease.Instance{
+		Host: host,
+		User: p.User.String(),
+		ID:   id,
+	}
+}
+
+// NewInstanceID generates an instance identifier for p.
 //
 // The return value is not guaranteed to be deterministic.
-func NewInstance(p winproc.Process) string {
+func NewInstanceID(p winproc.Process) string {
 	var (
 		hash = sha3.New224()
 		w    = hashWriter{bufio.NewWriterSize(hash, hash.BlockSize())}

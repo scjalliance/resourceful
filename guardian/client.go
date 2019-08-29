@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian/transport"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 // Client coordinates resource leasing with a resourceful guardian server.
@@ -73,22 +73,22 @@ func (c *Client) Policies() (response transport.PoliciesResponse, err error) {
 }
 
 // Acquire will attempt to acquire a lease for the given resource and consumer.
-func (c *Client) Acquire(resource, consumer, instance string, env environment.Environment) (response transport.AcquireResponse, err error) {
-	response, err = c.endpoint.Acquire(resource, consumer, instance, env)
+func (c *Client) Acquire(subject lease.Subject, props lease.Properties) (response transport.AcquireResponse, err error) {
+	response, err = c.endpoint.Acquire(subject, props)
 	if err != nil {
 		if c.SelectEndpoint() == nil {
-			response, err = c.endpoint.Acquire(resource, consumer, instance, env)
+			response, err = c.endpoint.Acquire(subject, props)
 		}
 	}
 	return
 }
 
 // Release will attempt to remove the lease for the given resource and consumer.
-func (c *Client) Release(resource, consumer, instance string) (response transport.ReleaseResponse, err error) {
-	response, err = c.endpoint.Release(resource, consumer, instance)
+func (c *Client) Release(subject lease.Subject) (response transport.ReleaseResponse, err error) {
+	response, err = c.endpoint.Release(subject)
 	if err != nil {
 		if c.SelectEndpoint() == nil {
-			response, err = c.endpoint.Release(resource, consumer, instance)
+			response, err = c.endpoint.Release(subject)
 		}
 	}
 	return

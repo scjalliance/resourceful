@@ -9,13 +9,6 @@ import (
 // TODO: Consider changing these into integer-based enumerations with a custom
 //       JSON codec.
 
-// Components that may be matched by policy criteria.
-const (
-	ComponentResource    = "resource"
-	ComponentConsumer    = "consumer"
-	ComponentEnvironment = "environment"
-)
-
 // Comparison types for matching policy criteria.
 const (
 	ComparisonExact      = "exact"

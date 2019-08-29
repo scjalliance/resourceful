@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian/transport"
 	"github.com/scjalliance/resourceful/lease"
 )
@@ -22,10 +21,8 @@ type Acquisition struct {
 // lease it might hold.
 type LeaseMaintainer struct {
 	client   *Client
-	resource string
-	consumer string
-	instance string
-	env      environment.Environment
+	instance lease.Instance
+	props    lease.Properties
 	retry    time.Duration // 0 == no retry
 	// maxRetries?
 
@@ -47,13 +44,11 @@ type LeaseMaintainer struct {
 //
 // It is the caller's responsibility to close the lease maintainer when
 // finished with it.
-func NewLeaseMaintainer(client *Client, resource, consumer, instance string, env environment.Environment, retry time.Duration) *LeaseMaintainer {
+func NewLeaseMaintainer(client *Client, instance lease.Instance, props lease.Properties, retry time.Duration) *LeaseMaintainer {
 	return &LeaseMaintainer{
 		client:   client,
-		resource: resource,
-		consumer: consumer,
 		instance: instance,
-		env:      env,
+		props:    props,
 		retry:    retry,
 	}
 }
@@ -193,19 +188,38 @@ func (lm *LeaseMaintainer) run(shutdown <-chan struct{}, stopped chan<- struct{}
 }
 
 func (lm *LeaseMaintainer) acquire() lease.State {
-	response, err := lm.client.Acquire(lm.resource, lm.consumer, lm.instance, lm.env)
-
 	lm.stateMutex.Lock()
 	defer lm.stateMutex.Unlock()
 
-	if err == nil {
+	var subject lease.Subject
+	if lm.state.Acquired {
+		// If we already have a lease, use its subject
+		subject = lm.state.Lease.Subject
+	} else {
+		// If we don't already have a lease, leave the resource empty
+		subject.Instance = lm.instance
+	}
+
+	response, err := lm.client.Acquire(subject, lm.props)
+
+	switch err {
+	case nil:
 		lm.state.Online = true
+		lm.state.LeaseNotRequired = false
 		lm.state.Acquired = true
 		lm.state.Lease = response.Lease
 		lm.state.Leases = response.Leases
 		lm.state.Err = nil
-	} else {
+	case ErrLeaseNotRequired:
+		lm.state.Online = true
+		lm.state.LeaseNotRequired = true
+		lm.state.Acquired = false
+		lm.state.Lease = lease.Lease{}
+		lm.state.Leases = nil
+		lm.state.Err = nil
+	default:
 		lm.state.Online = false
+		lm.state.LeaseNotRequired = false
 		lm.state.Err = err
 	}
 
@@ -216,10 +230,13 @@ func (lm *LeaseMaintainer) acquire() lease.State {
 }
 
 func (lm *LeaseMaintainer) release() lease.State {
-	_, err := lm.client.Release(lm.resource, lm.consumer, lm.instance)
-
 	lm.stateMutex.Lock()
 	defer lm.stateMutex.Unlock()
+
+	var err error
+	if lm.state.Acquired {
+		_, err = lm.client.Release(lm.state.Lease.Subject)
+	}
 
 	if err == nil {
 		lm.state.Acquired = false

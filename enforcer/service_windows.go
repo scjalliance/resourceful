@@ -165,7 +165,7 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	for id, mp := range s.managed {
 		mp.Stop()
 		delete(s.managed, id)
-		s.log("Stopped management of %s", Subject(s.hostname, mp.proc))
+		s.log("Stopped management of %s", Instance(s.hostname, mp.proc, id.String()))
 	}
 }
 
@@ -190,15 +190,16 @@ func (s *Service) Enforce() error {
 
 		// Don't manage blacklisted processes
 		if Blacklisted(proc) {
+			subject := Instance(s.hostname, proc, id.String())
 			if mp, exists := s.managed[id]; exists {
 				// Remove from managed and add to skipped
 				mp.Stop()
 				delete(s.managed, id)
 				s.skipped[id] = struct{}{}
-				s.log("Stopped management of blacklisted process: %s", Subject(s.hostname, proc))
+				s.log("Stopped management of blacklisted process: %s", subject)
 			} else if _, exists := s.skipped[id]; !exists {
 				// Add to skipped
-				s.log("Skipped management of blacklisted process: %s", Subject(s.hostname, proc))
+				s.log("Skipped management of blacklisted process: %s", subject)
 				s.skipped[id] = struct{}{}
 			}
 			continue
@@ -215,9 +216,7 @@ func (s *Service) Enforce() error {
 		}
 
 		// If it matches a policy add it to the pending slice
-		subject := Subject(s.hostname, proc)
-		env := Env(s.hostname, proc)
-		matches := policies.Match(subject.Resource, subject.Consumer, env)
+		matches := policies.Match(Properties(proc, s.hostname))
 		if len(matches) > 0 {
 			pending = append(pending, proc)
 		}
@@ -229,7 +228,7 @@ func (s *Service) Enforce() error {
 			proc := s.managed[id].proc
 			s.managed[id].Stop() // If the process died this is redundant, but if it no longer needs a lease this cleans up the manager
 			delete(s.managed, id)
-			s.log("Stopped management of %s", Subject(s.hostname, proc))
+			s.log("Stopped management of %s", Instance(s.hostname, proc, id.String()))
 		}
 	}
 
@@ -249,14 +248,15 @@ func (s *Service) Enforce() error {
 
 	for _, proc := range pending {
 		id := proc.UniqueID()
-		mp, err := Manage(s.client, s.hostname, proc, s.passive, s.logger)
+		instance := Instance(s.hostname, proc, id.String())
+		mp, err := Manage(s.client, proc, instance, s.passive, s.logger)
 		if err != nil {
 			s.log("Unable to manage process %s: %v", id, err)
 			continue
 		}
 		s.managed[id] = mp
 
-		s.log("Started management of %s", Subject(s.hostname, proc))
+		s.log("Started management of %s", instance)
 	}
 
 	return nil

@@ -28,7 +28,7 @@ type ManagedProcess struct {
 }
 
 // Manage performs lease management for the given process.
-func Manage(client *guardian.Client, hostname string, proc Process, passive bool, logger Logger) (*ManagedProcess, error) {
+func Manage(client *guardian.Client, proc Process, instance lease.Instance, passive bool, logger Logger) (*ManagedProcess, error) {
 	// Open a reference to the process with the highest level of privilege
 	// that we can get
 	ref, err := openProcess(proc.ID, passive)
@@ -51,9 +51,8 @@ func Manage(client *guardian.Client, hostname string, proc Process, passive bool
 	}
 
 	retry := time.Second * 5
-	subject := Subject(hostname, proc)
 
-	maintainer := guardian.NewLeaseMaintainer(client, subject.Resource, subject.Consumer, subject.Instance, Env(hostname, proc), retry)
+	maintainer := guardian.NewLeaseMaintainer(client, instance, Properties(proc, instance.Host), retry)
 	ctx, cancel := context.WithCancel(context.Background())
 	stopped := make(chan struct{})
 
@@ -140,9 +139,9 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 				switch state.Lease.Status {
 				case lease.Active:
 					termPending = false
-					mp.log("Lease: %s", state.Lease.Subject())
+					mp.log("Lease: %s", state.Lease.Subject)
 				case lease.Queued:
-					mp.log("Queued: %s", state.Lease.Subject())
+					mp.log("Queued: %s", state.Lease.Subject)
 				}
 			}
 			if !state.Acquired || state.Lease.Status != lease.Active {

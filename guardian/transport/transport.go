@@ -2,17 +2,14 @@
 package transport
 
 import (
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/policy"
 )
 
 // Request represents a request from a resourceful client.
 type Request struct {
-	Resource    string                  `json:"resource,omitempty"`
-	Consumer    string                  `json:"consumer,omitempty"`
-	Instance    string                  `json:"instance,omitempty"`
-	Environment environment.Environment `json:"environment,omitempty"`
+	lease.Subject    `json:"subject"`
+	lease.Properties `json:"properties"`
 }
 
 // HealthResponse reports the health of a guardian server.

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian/transport"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 // An Endpoint is a guardian service URL.
@@ -38,13 +38,13 @@ func (e Endpoint) Leases(resource string) (response transport.PoliciesResponse, 
 }
 
 // Acquire attempts to acquire a lease for the given resource and consumer.
-func (e Endpoint) Acquire(resource, consumer, instance string, env environment.Environment) (response transport.AcquireResponse, err error) {
-	return response, e.post("acquire", resource, consumer, instance, env, &response)
+func (e Endpoint) Acquire(subject lease.Subject, props lease.Properties) (response transport.AcquireResponse, err error) {
+	return response, e.post("acquire", subject, props, &response)
 }
 
 // Release attempts to remove the lease for the given resource and consumer.
-func (e Endpoint) Release(resource, consumer, instance string) (response transport.ReleaseResponse, err error) {
-	return response, e.post("release", resource, consumer, instance, nil, &response)
+func (e Endpoint) Release(subject lease.Subject) (response transport.ReleaseResponse, err error) {
+	return response, e.post("release", subject, nil, &response)
 }
 
 // prefix returns the URL prefix for the endpoint.
@@ -102,39 +102,52 @@ func (e Endpoint) getWithTimeout(path string, response interface{}, timeout time
 	return json.NewDecoder(resp.Body).Decode(response)
 }
 
-func (e Endpoint) post(path, resource, consumer, instance string, env environment.Environment, response interface{}) (err error) {
+func (e Endpoint) post(path string, subject lease.Subject, props lease.Properties, response interface{}) (err error) {
 	if e == "" {
 		return ErrEmptyEndpoint
 	}
 
 	addr := e.prefix() + path
 
-	v := url.Values{}
-	if resource != "" {
-		v.Set("resource", resource)
-	}
-	if consumer != "" {
-		v.Set("consumer", consumer)
-	}
-	if instance != "" {
-		v.Set("instance", instance)
-	}
-	if env != nil {
-		for key, value := range env {
-			v.Set(key, value)
-		}
-	}
-
-	r, err := http.PostForm(addr, v)
+	r, err := http.PostForm(addr, urlValues(subject, props))
 	if err != nil {
 		return err
 	}
 	defer r.Body.Close()
 
-	if r.StatusCode != 200 {
-		err = fmt.Errorf("http status: %v", r.Status)
-		return
+	switch r.StatusCode {
+	case http.StatusNoContent:
+		// TODO: Extract a retry interval from the Cache-Control header?
+		/*
+			if cc := r.Header.Get("Cache-Control"); cc != "" {
+			}
+		*/
+		return ErrLeaseNotRequired
+	case http.StatusOK:
+		return json.NewDecoder(r.Body).Decode(response)
+	default:
+		return fmt.Errorf("http status: %v", r.Status)
 	}
+}
 
-	return json.NewDecoder(r.Body).Decode(response)
+func urlValues(subject lease.Subject, props lease.Properties) url.Values {
+	v := url.Values{}
+	if subject.Resource != "" {
+		v.Set("resource", subject.Resource)
+	}
+	if subject.Instance.Host != "" {
+		v.Set("host", subject.Instance.Host)
+	}
+	if subject.Instance.User != "" {
+		v.Set("user", subject.Instance.User)
+	}
+	if subject.Instance.ID != "" {
+		v.Set("instance", subject.Instance.ID)
+	}
+	if props != nil {
+		for key, value := range props {
+			v.Set(key, value)
+		}
+	}
+	return v
 }

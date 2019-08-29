@@ -29,14 +29,14 @@ func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 				iter.Update()
 			}
 
-			acc.Add(iter.Consumer, iter.Status)
+			acc.Add(iter.HostUser(), iter.Status)
 		case lease.Released:
 			if iter.Decayed(at) {
 				iter.Delete()
 				return
 			}
 
-			acc.Add(iter.Consumer, iter.Status)
+			acc.Add(iter.HostUser(), iter.Status)
 		case lease.Queued:
 			if iter.Expired(at) {
 				iter.Delete()
@@ -53,20 +53,20 @@ func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 
 			// When possible, replace an existing lease for the same consumer
 			// that has already been released and is decaying.
-			if acc.Released(iter.Consumer) > 0 {
+			if acc.Released(iter.HostUser()) > 0 {
 				// This requires two passes. In this pass we'll note the replacement
 				// and delete the queued lease. In the second pass we'll update the
 				// decaying lease.
 				replacements = append(replacements, iter.Lease)
 				iter.Delete()
-				acc.StartReplacement(iter.Consumer)
+				acc.StartReplacement(iter.HostUser())
 				return
 			}
 
-			if CanActivate(iter.Strategy, acc.Active(iter.Consumer), consumed, iter.Limit) {
+			if CanActivate(iter.Strategy, acc.Active(iter.HostUser()), consumed, iter.Limit) {
 				iter.Status = lease.Active
 				iter.Update()
-				acc.Add(iter.Consumer, iter.Status)
+				acc.Add(iter.HostUser(), iter.Status)
 			}
 		}
 	})
@@ -78,10 +78,10 @@ func Refresh(tx *lease.Tx, at time.Time) *Accumulator {
 			if iter.Status != lease.Released {
 				return
 			}
-			if acc.Replacements(iter.Consumer) == 0 {
+			if acc.Replacements(iter.HostUser()) == 0 {
 				return
 			}
-			acc.FinishReplacement(iter.Consumer)
+			acc.FinishReplacement(iter.HostUser())
 			iter.Lease = replacements[r]
 			iter.Status = lease.Active
 			iter.Update()

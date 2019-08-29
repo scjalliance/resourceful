@@ -14,4 +14,7 @@ var (
 	// ErrClosed is returned when a stop or close action is taken on
 	// something that's already been stopped or closed.
 	ErrClosed = errors.New("already closed")
+
+	// ErrLeaseNotRequired is returned when a lease is not required.
+	ErrLeaseNotRequired = errors.New("lease not required")
 )

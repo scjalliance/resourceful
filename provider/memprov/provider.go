@@ -81,12 +81,12 @@ func (p *Provider) LeaseCommit(tx *lease.Tx) error {
 		case lease.Create:
 			page.leases = append(page.leases, op.Lease)
 		case lease.Update:
-			i := page.leases.Index(op.Previous.Resource, op.Previous.Consumer, op.Previous.Instance)
+			i := page.leases.Index(op.Previous.Resource, op.Previous.Instance)
 			if i >= 0 {
 				page.leases[i] = lease.Clone(op.Lease)
 			}
 		case lease.Delete:
-			i := page.leases.Index(op.Previous.Resource, op.Previous.Consumer, op.Previous.Instance)
+			i := page.leases.Index(op.Previous.Resource, op.Previous.Instance)
 			if i >= 0 {
 				page.leases = append(page.leases[:i], page.leases[i+1:]...)
 			}

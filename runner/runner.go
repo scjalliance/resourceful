@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/lease/leaseui"
@@ -19,19 +18,18 @@ import (
 // It is capable of showing a queued lease dialog to the user if a lease cannot
 // be acquired immediately.
 type Runner struct {
-	config    Config
-	consumer  string
-	instance  string
-	env       environment.Environment
-	retry     time.Duration
-	icon      *leaseui.Icon
-	client    *guardian.Client
-	running   bool
-	failed    bool // Have we lost connection?
-	warned    bool // Has the user been warned about a connection loss?
-	restored  bool // Are we waiting for the user to acknowledge that the connection was restored?
-	ui        *leaseui.Manager
-	dismissal time.Time
+	config     Config
+	instance   lease.Instance
+	properties lease.Properties
+	retry      time.Duration
+	icon       *leaseui.Icon
+	client     *guardian.Client
+	running    bool
+	failed     bool // Have we lost connection?
+	warned     bool // Has the user been warned about a connection loss?
+	restored   bool // Are we waiting for the user to acknowledge that the connection was restored?
+	ui         *leaseui.Manager
+	dismissal  time.Time
 
 	mutex sync.Mutex // Held during processing
 }
@@ -54,7 +52,7 @@ func New(client *guardian.Client, config Config) (*Runner, error) {
 }
 
 func (r *Runner) init() (err error) {
-	r.consumer, r.instance, r.env, err = DetectEnvironment()
+	r.instance, r.properties, err = DetectEnvironment(r.config)
 	if err != nil {
 		return fmt.Errorf("runner: unable to detect environment: %v", err)
 	}
@@ -74,7 +72,7 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 	r.ui = leaseui.New(leaseui.Config{
 		Icon:     r.config.Icon,
 		Program:  r.config.Program,
-		Consumer: r.consumer,
+		Instance: r.instance, // Only used to identify our own lease in a list
 	})
 
 	var runErr error
@@ -97,7 +95,7 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 
 func (r *Runner) run(ctx context.Context) (err error) {
 	ctx, shutdown := context.WithCancel(ctx)
-	maintainer := guardian.NewLeaseMaintainer(r.client, r.config.Program, r.consumer, r.instance, r.env, r.retry)
+	maintainer := guardian.NewLeaseMaintainer(r.client, r.instance, r.properties, r.retry)
 	defer shutdown() // Make sure the lease maintainer is shut down if there's an error
 
 	go func() {
@@ -132,6 +130,8 @@ func (r *Runner) run(ctx context.Context) (err error) {
 
 		if state.Err != nil {
 			err = r.handleError(ctx, state, shutdown)
+		} else if state.LeaseNotRequired {
+			err = r.handleLeaseNotRequired(ctx, shutdown)
 		} else {
 			switch state.Lease.Status {
 			case lease.Queued:
@@ -227,6 +227,30 @@ func (r *Runner) handleActive(ctx context.Context, completion context.CancelFunc
 	} else {
 		log.Printf("Lease acquired")
 	}
+
+	r.warned = false
+	r.failed = false
+
+	if !r.running {
+		return r.execute(ctx, completion)
+	}
+
+	return
+}
+
+// handleLeaseNotRequired processes lease-not-required acquisitions.
+func (r *Runner) handleLeaseNotRequired(ctx context.Context, completion context.CancelFunc) (err error) {
+	switch {
+	case r.warned:
+		r.restored = true
+		r.ui.Change(leaseui.Connected, r.connectedCallback())
+	case r.restored:
+		// Waiting for the user to acknowlege that the server has been restored
+	default:
+		r.ui.Change(leaseui.None, nil)
+	}
+
+	log.Printf("Lease not required")
 
 	r.warned = false
 	r.failed = false

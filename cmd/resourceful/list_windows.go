@@ -10,12 +10,13 @@ import (
 
 	"github.com/gentlemanautomaton/winproc"
 	"github.com/scjalliance/resourceful/enforcer"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 func list(ctx context.Context, server string) {
 	prepareConsole(false)
 
-	hostname, err := os.Hostname()
+	host, err := os.Hostname()
 	if err != nil {
 		fmt.Printf("Failed to query local hostname: %v\n", err)
 		os.Exit(1)
@@ -40,24 +41,18 @@ func list(ctx context.Context, server string) {
 
 	fmt.Printf("Processes:\n")
 	for _, process := range procs {
-		subject := enforcer.Subject(hostname, process)
-		if matches := policies.Match(subject.Resource, subject.Consumer, enforcer.Env(hostname, process)); len(matches) > 0 {
+		instance := enforcer.Instance(host, process, enforcer.NewInstanceID(process))
+		props := enforcer.Properties(process, host)
+		if matches := policies.Match(props); len(matches) > 0 {
 			fmt.Printf("%s\n", process)
-			if resource := matches.Resource(); resource != "" && resource != subject.Resource {
-				fmt.Printf("  Resource: %s (%s)\n", resource, subject.Resource)
-			} else {
-				fmt.Printf("  Resource: %s\n", subject.Resource)
-			}
-
-			if consumer := matches.Consumer(); consumer != "" && consumer != subject.Consumer {
-				fmt.Printf("  Consumer: %s (%s)\n", consumer, subject.Consumer)
-			} else {
-				fmt.Printf("  Consumer: %s\n", subject.Consumer)
-			}
-
-			fmt.Printf("  Instance: %s\n", subject.Instance)
+			fmt.Printf("  Resource: %s\n", matches.Resource())
+			fmt.Printf("  Instance: %s\n", instance)
 			fmt.Printf("  Limit: %d\n", matches.Limit())
 			fmt.Printf("  Duration: %s\n", matches.Duration())
+			merged := lease.MergeProperties(props, matches.Properties())
+			for key, value := range merged {
+				fmt.Printf("  %s: %s\n", key, value)
+			}
 		}
 	}
 	//printChildren(0, tree)

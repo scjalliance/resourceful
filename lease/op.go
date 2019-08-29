@@ -73,7 +73,7 @@ type Effect struct {
 
 // String returns a string representation of the effect.
 func (e *Effect) String() string {
-	return fmt.Sprintf("%s %s %s %s %s", e.Instance, e.Consumer, strings.ToUpper(e.Action.String()), strings.ToUpper(string(e.Status)), e.Resource)
+	return fmt.Sprintf("%s %s %s %s", e.Instance, strings.ToUpper(e.Action.String()), strings.ToUpper(string(e.Status)), e.Resource)
 }
 
 // Op is a lease operation describing a create, update or delete action
@@ -88,7 +88,7 @@ func (op *Op) UpdateType() UpdateType {
 	switch {
 	case op.Lease.Resource != op.Previous.Resource:
 		return Transmute
-	case op.Lease.Consumer != op.Previous.Consumer:
+	case op.Lease.Instance.Host != op.Previous.Instance.Host || op.Lease.Instance.User != op.Previous.Instance.User:
 		return Exchange
 	case op.Lease.Instance != op.Previous.Instance:
 		return Replace

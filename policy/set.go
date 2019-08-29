@@ -3,7 +3,6 @@ package policy
 import (
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/strategy"
 )
@@ -51,10 +50,10 @@ func (s Set) Diff(next Set) (additions, deletions Set) {
 	return
 }
 
-// Match returns the subset of policies which match the given parameters.
-func (s Set) Match(resource, consumer string, env environment.Environment) (matches Set) {
+// Match returns the subset of policies which match the given properties.
+func (s Set) Match(props lease.Properties) (matches Set) {
 	for p := range s {
-		if s[p].Match(resource, consumer, env) {
+		if s[p].Match(props) {
 			matches = append(matches, s[p])
 		}
 	}
@@ -164,23 +163,11 @@ func (s Set) Resource() (resource string) {
 	return ""
 }
 
-// Consumer returns the first consumer defined in the policy set.
-//
-// If the set is empty, the returned value will be blank.
-func (s Set) Consumer() (consumer string) {
+// Properties returns the merged properties of all policies in the set.
+func (s Set) Properties() (props lease.Properties) {
+	var list []lease.Properties
 	for i := 0; i < len(s); i++ {
-		if s[i].Consumer != "" {
-			return s[i].Consumer
-		}
+		list = append(list, s[i].Properties)
 	}
-	return ""
-}
-
-// Environment returns the merged environment of all policies in the set.
-func (s Set) Environment() (env environment.Environment) {
-	var envs []environment.Environment
-	for i := 0; i < len(s); i++ {
-		envs = append(envs, s[i].Environment)
-	}
-	return environment.Merge(envs...)
+	return lease.MergeProperties(list...)
 }

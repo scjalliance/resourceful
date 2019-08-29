@@ -3,36 +3,32 @@ package lease
 import (
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/strategy"
 )
 
 // Lease describes a single assignment of a leased resource.
 type Lease struct {
-	Resource    string                  `json:"resource"`    // The thing that is being leased
-	Consumer    string                  `json:"consumer"`    // The entity that holds the lease
-	Instance    string                  `json:"instance"`    // Optional identifier of a particular lease instance
-	Environment environment.Environment `json:"environment"` // Map of additional properties of the lease
-	Status      Status                  `json:"status"`
-	Started     time.Time               `json:"started,omitempty"`
-	Renewed     time.Time               `json:"renewed,omitempty"`
-	Released    time.Time               `json:"released,omitempty"`
-	Strategy    strategy.Strategy       `json:"strategy,omitempty"`
-	Limit       uint                    `json:"limit"`
-	Duration    time.Duration           `json:"duration"`
-	Decay       time.Duration           `json:"decay"`
-	Refresh     Refresh                 `json:"refresh,omitempty"`
+	Subject
+	Properties Properties        `json:"properties"` // Properties of the lease
+	Status     Status            `json:"status"`
+	Started    time.Time         `json:"started,omitempty"`
+	Renewed    time.Time         `json:"renewed,omitempty"`
+	Released   time.Time         `json:"released,omitempty"`
+	Strategy   strategy.Strategy `json:"strategy,omitempty"`
+	Limit      uint              `json:"limit"`
+	Duration   time.Duration     `json:"duration"`
+	Decay      time.Duration     `json:"decay"`
+	Refresh    Refresh           `json:"refresh,omitempty"`
 }
 
-// MatchConsumer returns true if the lease is for the given resource and consumer.
-func (ls *Lease) MatchConsumer(resource, consumer string) (matched bool) {
-	return ls.Resource == resource && ls.Consumer == consumer
+// MatchHostUser returns true if the lease is for the given resource, host and user.
+func (ls *Lease) MatchHostUser(resource, host, user string) (matched bool) {
+	return ls.Resource == resource && ls.Instance.Host == host && ls.Instance.User == user
 }
 
-// MatchInstance returns true if the lease is for the given resource,
-// consumer and instance.
-func (ls *Lease) MatchInstance(resource, consumer, instance string) (matched bool) {
-	return ls.Resource == resource && ls.Consumer == consumer && ls.Instance == instance
+// MatchInstance returns true if the lease is for the given resource and instance.
+func (ls *Lease) MatchInstance(resource string, inst Instance) (matched bool) {
+	return ls.Resource == resource && ls.Instance == inst
 }
 
 // MatchStatus returns true if the lease has the given status.
@@ -105,40 +101,21 @@ func (ls *Lease) EffectiveRefresh() (interval time.Duration) {
 
 // ResourceName returns the user-friendly name of the resource.
 func (ls *Lease) ResourceName() string {
-	name := ls.Environment["resource.name"]
-	if name != "" {
+	if name := ls.Properties["resource.name"]; name != "" {
 		return name
 	}
 
-	name = ls.Environment["resource.id"]
-	if name != "" {
+	if name := ls.Properties["resource.id"]; name != "" {
 		return name
 	}
 
 	return ls.Resource
 }
 
-// Subject returns a string identifying the subject of the lease, which
-// includes the instance, consumer and resource.
-func (ls *Lease) Subject() Subject {
-	return Subject{
-		Resource: ls.Resource,
-		Consumer: ls.Consumer,
-		Instance: ls.Instance,
-	}
-}
-
-// Specified returns true if the lease has a subject.
-func (ls *Lease) Specified() bool {
-	return ls.Resource != "" || ls.Consumer != "" || ls.Instance != ""
-}
-
 // Clone returns a deep copy of the lease.
 func Clone(from Lease) (to Lease) {
-	to.Resource = from.Resource
-	to.Consumer = from.Consumer
-	to.Instance = from.Instance
-	to.Environment = environment.Clone(from.Environment)
+	to.Subject = from.Subject
+	to.Properties = from.Properties.Clone()
 	to.Status = from.Status
 	to.Started = from.Started
 	to.Renewed = from.Renewed

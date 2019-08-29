@@ -115,9 +115,9 @@ func (m *QueuedModel) Value(row, col int) interface{} {
 	case 0:
 		return ls.Status
 	case 1:
-		return ls.Environment["user.name"]
+		return ls.Properties["user.name"]
 	case 2:
-		return ls.Environment["host.name"]
+		return ls.Properties["host.name"]
 	case 3:
 		if ls.Status == lease.Released {
 			return ""
@@ -129,7 +129,7 @@ func (m *QueuedModel) Value(row, col int) interface{} {
 		if ls.Decay == 0 {
 			return ""
 		}
-		if ls.Consumer == m.Consumer {
+		if ls.Instance.Host == m.Instance.Host && ls.Instance.User == m.Instance.User {
 			// There is no decay period for leases belonging to the same consumer.
 			return ""
 		}

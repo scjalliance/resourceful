@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/guardian/transport"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/lease/leaseutil"
@@ -165,48 +164,100 @@ func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 
 // acquireHandler will attempt to acquire a lease for the specified resource.
 func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
-	req, pol, err := s.initRequest(r)
+	req, policies, err := s.initRequest(r)
 	if err != nil {
 		printf(s.Logger, "Bad acquire request: %v\n", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
+	printf(s.Logger, "Lease requested: %s\n", req.Subject)
+
+	// TODO: When the matching policy set dictates consumption of more than
+	// one resource, produce a lease for each one.
+
+	// Determine what resource the lease should be issued for
+	if resource := policies.Resource(); resource != req.Resource {
+		if req.Resource != "" {
+			// This is a renewal and the current set of policies dictate
+			// use of a different resource than before, or none at all.
+			// Attempt to release the previously held resource before
+			// acquiring the new one.
+			if err := s.release(req.Subject, policies); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		req.Resource = resource
+	}
+
+	// Return HTTP 204 if there are no matching policies
+	if req.Resource == "" {
+		w.Header().Set("Cache-Control", "max-age=300")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Merge the client-provided properties with the policy-provided properties
+	props := lease.MergeProperties(req.Properties, policies.Properties())
+
+	prefix := req.Subject.String()
 
 	printf(s.Logger, "%s: Lease acquisition requested\n", prefix)
 
-	strat := pol.Strategy()
-	limit := pol.Limit()
-	duration := pol.Duration()
-	decay := pol.Decay()
-	refresh := pol.Refresh()
+	ls, leases, err := s.acquire(req.Subject, props, policies)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	var leases lease.Set
-	var ls lease.Lease
+	response := transport.AcquireResponse{
+		Request: req,
+		Lease:   ls,
+		Leases:  leases,
+	}
+
+	data, err := json.Marshal(response)
+	if err != nil {
+		printf(s.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
+		http.Error(w, "Failed to marshal response", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Fprintf(w, string(data))
+}
+
+// acquireHandler will attempt to acquire a lease for the specified resource.
+func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies policy.Set) (ls lease.Lease, leases lease.Set, err error) {
+	prefix := subject.String()
+
+	strat := policies.Strategy()
+	limit := policies.Limit()
+	duration := policies.Duration()
+	decay := policies.Decay()
+	refresh := policies.Refresh()
+
 	mode := "Creation" // Only used for logging
 
 	for attempt := 0; attempt < 5; attempt++ {
 		var revision uint64
 
-		revision, leases, err = s.LeaseProvider.LeaseView(req.Resource)
+		revision, leases, err = s.LeaseProvider.LeaseView(subject.Resource)
 		if err != nil {
 			printf(s.Logger, "%s: Lease retrieval failed: %v\n", prefix, err)
 		}
 		now := time.Now()
 
 		ls = lease.Lease{
-			Resource:    req.Resource,
-			Consumer:    req.Consumer,
-			Instance:    req.Instance,
-			Environment: req.Environment,
-			Started:     now,
-			Renewed:     now,
-			Strategy:    strat,
-			Limit:       limit,
-			Duration:    duration,
-			Decay:       decay,
-			Refresh:     refresh,
+			Subject:    subject,
+			Started:    now,
+			Renewed:    now,
+			Strategy:   strat,
+			Limit:      limit,
+			Duration:   duration,
+			Decay:      decay,
+			Refresh:    refresh,
+			Properties: props,
 		}
 
 		if ls.Refresh.Active != 0 {
@@ -222,13 +273,13 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		tx := lease.NewTx(req.Resource, revision, leases)
+		tx := lease.NewTx(subject.Resource, revision, leases)
 
 		acc := leaseutil.Refresh(tx, now)
 		consumed := acc.Total(strat)
-		released := acc.Released(req.Consumer)
+		released := acc.Released(subject.HostUser())
 
-		existing, found := tx.Instance(req.Consumer, req.Instance)
+		existing, found := tx.Instance(subject.Instance)
 		if found {
 			if existing.Status == lease.Released {
 				// Renewal of a released lease, possibly because of timing skew
@@ -238,28 +289,28 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 				} else {
 					ls.Status = lease.Queued
 				}
-				tx.Update(existing.Consumer, existing.Instance, ls)
+				tx.Update(existing.Instance, ls)
 			} else {
 				// Renewal of active or queued lease
 				mode = "Renewal"
 				ls.Status = existing.Status
 				ls.Started = existing.Started
-				tx.Update(existing.Consumer, existing.Instance, ls)
+				tx.Update(existing.Instance, ls)
 			}
 		} else {
 			if released > 0 && consumed <= limit {
 				// Lease replacement (for an expired or released lease previously
 				// issued to the the same consumer, that's in a decaying state)
-				replaceable := tx.Consumer(req.Consumer).Status(lease.Released)
+				replaceable := tx.HostUser(subject.Instance.Host, subject.Instance.User).Status(lease.Released)
 				if uint(len(replaceable)) != released {
 					panic("server: acquireHandler: accumulator returned a different count for relased leases than the transaction")
 				}
 				replaced := replaceable[released-1]
 				ls.Status = lease.Active
-				tx.Update(replaced.Consumer, replaced.Instance, ls)
+				tx.Update(replaced.Instance, ls)
 			} else {
 				// New lease
-				if leaseutil.CanActivate(strat, acc.Active(req.Consumer), consumed, limit) {
+				if leaseutil.CanActivate(strat, acc.Active(subject.HostUser()), consumed, limit) {
 					ls.Status = lease.Active
 				} else {
 					ls.Status = lease.Queued
@@ -284,17 +335,38 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	summary := statsSummary(limit, leases.Stats(), strat)
 	printf(s.Logger, "%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
 
-	response := transport.AcquireResponse{
+	return
+}
+
+// releaseHandler will attempt to remove the lease for the given resource and
+// consumer.
+func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
+	req, policies, err := s.initRequest(r)
+	if err != nil {
+		printf(s.Logger, "Bad release request: %v\n", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	prefix := req.Subject.String()
+
+	printf(s.Logger, "%s: Release requested\n", prefix)
+
+	err = s.release(req.Subject, policies)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	response := transport.ReleaseResponse{
 		Request: req,
-		Lease:   ls,
-		Leases:  leases,
+		Success: true,
 	}
 
 	data, err := json.Marshal(response)
@@ -307,22 +379,11 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(data))
 }
 
-// releaseHandler will attempt to remove the lease for the given resource and
-// consumer.
-func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
-	req, pol, err := s.initRequest(r)
-	if err != nil {
-		printf(s.Logger, "Bad release request: %v\n", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+func (s *Server) release(subject lease.Subject, policies policy.Set) (err error) {
+	prefix := subject.String()
 
-	prefix := fmt.Sprintf("%s %s", req.Resource, req.Consumer)
-
-	printf(s.Logger, "%s: Release requested\n", prefix)
-
-	strat := pol.Strategy()
-	limit := pol.Limit()
+	strat := policies.Strategy()
+	limit := policies.Limit()
 
 	var leases lease.Set
 	var ls lease.Lease
@@ -330,7 +391,7 @@ func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 
 	for attempt := 0; attempt < 5; attempt++ {
 		var revision uint64
-		revision, leases, err = s.LeaseProvider.LeaseView(req.Resource)
+		revision, leases, err = s.LeaseProvider.LeaseView(subject.Resource)
 		if err != nil {
 			printf(s.Logger, "%s: Release failed: %v\n", prefix, err)
 			continue
@@ -338,10 +399,10 @@ func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Prepare a delete transaction
 		now := time.Now()
-		tx := lease.NewTx(req.Resource, revision, leases)
+		tx := lease.NewTx(subject.Resource, revision, leases)
 		leaseutil.Refresh(tx, now) // Update stale values
-		ls, found = tx.Instance(req.Consumer, req.Instance)
-		tx.Release(req.Consumer, req.Instance, now)
+		ls, found = tx.Instance(subject.Instance)
+		tx.Release(subject.Instance, now)
 		leaseutil.Refresh(tx, now) // Updates leases after release
 
 		// Don't bother committing empty transactions
@@ -360,8 +421,7 @@ func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return err
 	}
 
 	summary := statsSummary(limit, leases.Stats(), strat)
@@ -375,19 +435,7 @@ func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 		printf(s.Logger, "%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
 	}
 
-	response := transport.ReleaseResponse{
-		Request: req,
-		Success: true,
-	}
-
-	data, err := json.Marshal(response)
-	if err != nil {
-		printf(s.Logger, "%s: Failed to marshal response: %v\n", prefix, err)
-		http.Error(w, "Failed to marshal response", http.StatusBadRequest)
-		return
-	}
-
-	fmt.Fprintf(w, string(data))
+	return nil
 }
 
 // Purge instructs the server to conduct a full survey of all lease data
@@ -438,36 +486,18 @@ func (s *Server) initRequest(r *http.Request) (req transport.Request, policies p
 		return
 	}
 
-	all, err := s.PolicyProvider.Policies()
+	if req.HostUser() == "" {
+		err = errors.New("consumer not specified or determinable")
+		return
+	}
+
+	policies, err = s.PolicyProvider.Policies()
 	if err != nil {
 		err = fmt.Errorf("unable to retrieve policies: %v", err)
 		return
 	}
 
-	policies = all.Match(req.Resource, req.Consumer, req.Environment)
-
-	resource := policies.Resource()
-	if resource != "" {
-		req.Resource = resource
-	}
-	req.Environment["resource.id"] = req.Resource
-
-	consumer := policies.Consumer()
-	if consumer != "" {
-		req.Consumer = consumer
-	}
-
-	env := policies.Environment()
-	if len(env) > 0 {
-		req.Environment = environment.Merge(req.Environment, env)
-	}
-
-	if req.Resource == "" {
-		err = errors.New("resource not specified or determinable")
-	} else if req.Consumer == "" {
-		err = errors.New("consumer not specified or determinable")
-	}
-	return
+	return req, policies.Match(req.Properties), nil
 }
 
 func parseRequest(r *http.Request) (req transport.Request, err error) {
@@ -475,7 +505,7 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 	if err != nil {
 		return
 	}
-	req.Environment = make(environment.Environment)
+	req.Properties = make(lease.Properties)
 	for k, values := range r.Form {
 		if len(values) == 0 {
 			continue
@@ -484,12 +514,14 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 		switch k {
 		case "resource":
 			req.Resource = value
-		case "consumer":
-			req.Consumer = value
+		case "host":
+			req.Instance.Host = value
+		case "user":
+			req.Instance.User = value
 		case "instance":
-			req.Instance = value
+			req.Instance.ID = value
 		default:
-			req.Environment[k] = value
+			req.Properties[k] = value
 		}
 	}
 	return

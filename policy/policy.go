@@ -7,28 +7,31 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scjalliance/resourceful/environment"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/strategy"
 	"golang.org/x/crypto/sha3"
 )
 
-// TODO: Use https://github.com/valyala/fasttemplate for consumer construction
+// TODO: Consider giving policies the ability to construct a "consumer" from
+// any number of properties. Doing this would allow policies flexibility in
+// describing the unit of consumption.
+//
+// We could use something like https://github.com/valyala/fasttemplate for
+// this construction.
 
 // Policy describes the matching conditions and rules for handling a particular
 // resource.
 //
 // A policy is applied only if all of its conditions are matched.
 type Policy struct {
-	Resource    string                  `json:"resource,omitempty"`    // Overrides client-supplied resource
-	Consumer    string                  `json:"consumer,omitempty"`    // Overrides client-supplied consumer
-	Environment environment.Environment `json:"environment,omitempty"` // Overrides client-supplied environment
-	Criteria    Criteria                `json:"criteria,omitempty"`
-	Strategy    strategy.Strategy       `json:"strategy,omitempty"`
-	Limit       uint                    `json:"limit,omitempty"`
-	Duration    time.Duration           `json:"duration,omitempty"` // Time before a leased resource is automatically released
-	Decay       time.Duration           `json:"decay,omitempty"`    // Time before a released resource is considered available again
-	Refresh     lease.Refresh           `json:"refresh,omitempty"`  // Time between lease acquisitions while maintaining a lease
+	Resource   string            `json:"resource,omitempty"`
+	Criteria   Criteria          `json:"criteria,omitempty"`
+	Strategy   strategy.Strategy `json:"strategy,omitempty"`
+	Limit      uint              `json:"limit,omitempty"`
+	Duration   time.Duration     `json:"duration,omitempty"` // Time before a leased resource is automatically released
+	Decay      time.Duration     `json:"decay,omitempty"`    // Time before a released resource is considered available again
+	Refresh    lease.Refresh     `json:"refresh,omitempty"`  // Time between lease acquisitions while maintaining a lease
+	Properties lease.Properties  `json:"override,omitempty"` // Properties for matching leases
 }
 
 // New returns a new policy for a particular resource with the given limit,
@@ -108,12 +111,12 @@ func (p *Policy) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Match returns true if the policy applies to the given resource, consumer and
-// environment.
+// Match returns true if the policy applies to a lease with the given
+// properites.
 //
 // All of the policy's conditions must match for the policy to be applied.
-func (p *Policy) Match(resource, consumer string, env environment.Environment) bool {
-	return p.Criteria.Match(resource, consumer, env)
+func (p *Policy) Match(props lease.Properties) bool {
+	return p.Criteria.Match(props)
 }
 
 // String returns a string representation of the policy.
@@ -121,9 +124,6 @@ func (p *Policy) String() string {
 	var parts []string
 	if p.Resource != "" {
 		parts = append(parts, fmt.Sprintf("Resource: %q", p.Resource))
-	}
-	if p.Consumer != "" {
-		parts = append(parts, fmt.Sprintf("Consumer: %q", p.Consumer))
 	}
 	if len(p.Criteria) > 0 {
 		parts = append(parts, fmt.Sprintf("Criteria: %q", p.Criteria.String()))
@@ -146,8 +146,8 @@ func (p *Policy) String() string {
 	if p.Refresh.Queued != 0 {
 		parts = append(parts, fmt.Sprintf("Queued Refresh: %s", p.Refresh.Queued))
 	}
-	if len(p.Environment) > 0 {
-		parts = append(parts, fmt.Sprintf("Env: %q", p.Environment))
+	if len(p.Properties) > 0 {
+		parts = append(parts, fmt.Sprintf("Properties: %q", p.Properties))
 	}
 	return strings.Join(parts, " ")
 }
@@ -160,15 +160,8 @@ func (p *Policy) Hash() Hash {
 	)
 
 	w.WriteString(p.Resource)
-	w.WriteString(p.Consumer)
-	w.WriteInt(len(p.Environment))
-	for key, value := range p.Environment {
-		w.WriteString(key)
-		w.WriteString(value)
-	}
 	w.WriteInt(len(p.Criteria))
 	for _, c := range p.Criteria {
-		w.WriteString(c.Component)
 		w.WriteString(c.Key)
 		w.WriteString(c.Comparison)
 		w.WriteString(c.Value)
@@ -179,6 +172,11 @@ func (p *Policy) Hash() Hash {
 	w.WriteDuration(p.Decay)
 	w.WriteDuration(p.Refresh.Active)
 	w.WriteDuration(p.Refresh.Queued)
+	w.WriteInt(len(p.Properties))
+	for key, value := range p.Properties {
+		w.WriteString(key)
+		w.WriteString(value)
+	}
 
 	if err := w.Flush(); err != nil {
 		panic(err)

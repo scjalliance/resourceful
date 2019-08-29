@@ -5,22 +5,22 @@ import "time"
 // Set is a set of leases.
 type Set []Lease
 
-// Consumer returns the set of leases matching the requested resource and
-// consumer.
-func (s Set) Consumer(resource, consumer string) (matched Set) {
+// HostUser returns the set of leases matching the requested resource, host
+// and user.
+func (s Set) HostUser(resource, host, user string) (matched Set) {
 	for i := range s {
-		if s[i].MatchConsumer(resource, consumer) {
+		if s[i].MatchHostUser(resource, host, user) {
 			matched = append(matched, Clone(s[i]))
 		}
 	}
 	return
 }
 
-// Instance returns the first lease that matches the requested resource,
-// consumer and instance.
-func (s Set) Instance(resource, consumer, instance string) (ls Lease, found bool) {
+// Instance returns the first lease that matches the requested resource and
+// instance.
+func (s Set) Instance(resource string, instance Instance) (ls Lease, found bool) {
 	for i := range s {
-		if s[i].MatchInstance(resource, consumer, instance) {
+		if s[i].MatchInstance(resource, instance) {
 			return Clone(s[i]), true
 		}
 	}
@@ -29,22 +29,22 @@ func (s Set) Instance(resource, consumer, instance string) (ls Lease, found bool
 
 // Index returns the index of the first lease within s that matches the given
 // parameters, or -1 if no such lease is present in s.
-func (s Set) Index(resource, consumer, instance string) (index int) {
+func (s Set) Index(resource string, instance Instance) (index int) {
 	for i := range s {
-		if s[i].MatchInstance(resource, consumer, instance) {
+		if s[i].MatchInstance(resource, instance) {
 			return i
 		}
 	}
 	return -1
 }
 
-// Environment returns a slice of environment values from the leases. Keys are
+// Property returns a slice of property values from the leases. Keys are
 // are supplied in preferential order, and the first key in each lease that
 // exists is returned as the value for that key.
-func (s Set) Environment(keys ...string) (values []string) {
+func (s Set) Property(keys ...string) (values []string) {
 	for _, l := range s {
 		for _, key := range keys {
-			if value, ok := l.Environment[key]; ok {
+			if value, ok := l.Properties[key]; ok {
 				values = append(values, value)
 				break
 			}
@@ -80,8 +80,9 @@ func (s Set) Stats() (stats Stats) {
 		// Leases are processed in sorted order, which means the active lease will
 		// be processed first. Consumers with both active and released leases will
 		// only count as active.
-		if _, seen := consumers[ls.Consumer]; !seen {
-			consumers[ls.Consumer] = struct{}{}
+		c := ls.HostUser()
+		if _, seen := consumers[c]; !seen {
+			consumers[c] = struct{}{}
 			stats.Consumer.Add(ls.Status)
 		}
 	}

@@ -77,14 +77,14 @@ func (tx *Tx) Revision() uint64 {
 	return tx.revision
 }
 
-// Consumer returns the set of leases matching the requested consumer.
-func (tx *Tx) Consumer(consumer string) (matched Set) {
-	return tx.leases.Consumer(tx.resource, consumer)
+// HostUser returns the set of leases matching the requested host and user.
+func (tx *Tx) HostUser(host, user string) (matched Set) {
+	return tx.leases.HostUser(tx.resource, host, user)
 }
 
-// Instance returns the first lease that matches the given parameters.
-func (tx *Tx) Instance(consumer, instance string) (ls Lease, found bool) {
-	return tx.leases.Instance(tx.resource, consumer, instance)
+// Instance returns the first lease that matches the given instance.
+func (tx *Tx) Instance(instance Instance) (ls Lease, found bool) {
+	return tx.leases.Instance(tx.resource, instance)
 }
 
 // Leases returns the lease set that the transaction will produce.
@@ -104,9 +104,9 @@ func (tx *Tx) Create(ls Lease) error {
 }
 
 // Update will update the lease within the set.
-func (tx *Tx) Update(consumer, instance string, ls Lease) error {
+func (tx *Tx) Update(instance Instance, ls Lease) error {
 	tx.Process(func(iter *Iter) {
-		if iter.MatchInstance(tx.resource, consumer, instance) {
+		if iter.MatchInstance(tx.resource, instance) {
 			iter.Lease = Clone(ls)
 			iter.Update()
 		}
@@ -115,9 +115,9 @@ func (tx *Tx) Update(consumer, instance string, ls Lease) error {
 }
 
 // Release will change the status of the lease to released.
-func (tx *Tx) Release(consumer, instance string, at time.Time) error {
+func (tx *Tx) Release(instance Instance, at time.Time) error {
 	tx.Process(func(iter *Iter) {
-		if iter.MatchInstance(tx.resource, consumer, instance) {
+		if iter.MatchInstance(tx.resource, instance) {
 			if iter.Status == Active {
 				iter.Status = Released
 				iter.Released = at
@@ -131,9 +131,9 @@ func (tx *Tx) Release(consumer, instance string, at time.Time) error {
 }
 
 // Delete will remove the lease from the set.
-func (tx *Tx) Delete(consumer, instance string) error {
+func (tx *Tx) Delete(instance Instance) error {
 	tx.Process(func(iter *Iter) {
-		if iter.MatchInstance(tx.resource, consumer, instance) {
+		if iter.MatchInstance(tx.resource, instance) {
 			iter.Delete()
 		}
 	})

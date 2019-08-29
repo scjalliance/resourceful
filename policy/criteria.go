@@ -4,20 +4,19 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/scjalliance/resourceful/environment"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 // Criteria describes a set of conditions for a policy to be applied.
 type Criteria []Criterion
 
-// Match returns true if all of the criteria match the provided resource,
-// consumer and environment.
-func (c Criteria) Match(resource, consumer string, env environment.Environment) bool {
+// Match returns true if the criteria match the provided lease properties.
+func (c Criteria) Match(props lease.Properties) bool {
 	if len(c) == 0 {
 		return false
 	}
 	for _, criterion := range c {
-		if !criterion.Match(resource, consumer, env) {
+		if !criterion.Match(props) {
 			return false
 		}
 	}
@@ -35,28 +34,16 @@ func (c Criteria) String() string {
 
 // Criterion describes a single condition required for a policy to match.
 type Criterion struct {
-	Component  string `json:"component"`  // The operand of the comparison
-	Key        string `json:"key"`        // The key when operating on an environmental component
+	Key        string `json:"key"`        // The lease property to be examined
 	Comparison string `json:"comparison"` // The operator of the comparison
-	Value      string `json:"value"`      // The value for comparison
+	Value      string `json:"value"`      // The value the property will be compared with
 
 	// TODO: cache compiled regular expressions?
 }
 
 // Match returns true if the given process is a match.
-func (c *Criterion) Match(resource string, consumer string, env environment.Environment) bool {
-	var value string
-
-	switch c.Component {
-	case ComponentResource:
-		value = resource
-	case ComponentConsumer:
-		value = consumer
-	case ComponentEnvironment:
-		value = env[c.Key]
-	default:
-		return false
-	}
+func (c *Criterion) Match(props lease.Properties) bool {
+	value := props[c.Key]
 
 	switch c.Comparison {
 	case ComparisonExact:
@@ -77,15 +64,8 @@ func (c *Criterion) Match(resource string, consumer string, env environment.Envi
 
 // String returns a string representation of the criterion.
 func (c *Criterion) String() string {
-	var output string
-
-	// Component
-	switch c.Component {
-	case ComponentEnvironment:
-		output = "env[" + c.Key + "]"
-	default:
-		output = c.Component
-	}
+	// Key
+	output := c.Key
 
 	// Operator
 	switch c.Comparison {

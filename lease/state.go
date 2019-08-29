@@ -6,21 +6,22 @@ import (
 
 // State holds state information about a lease for a lease holder.
 type State struct {
-	Online   bool          // Do we have a live connection to the guardian server?
-	Acquired bool          // Have we ever acquired a lease of any status?
-	Lease    Lease         // The most recent lease received from the server
-	Leases   Set           // All leases for a particular resource
-	Retry    time.Duration // How often soon after a failure should an acquistion be attempted?
-	Err      error         // The most recent acquisition error
+	Online           bool          // Do we have a live connection to the guardian server?
+	LeaseNotRequired bool          // Did the server tell us we don't need a lease?
+	Acquired         bool          // Have we acquired a lease of any status?
+	Lease            Lease         // The most recent lease received from the server
+	Leases           Set           // All leases for our lease resource
+	Retry            time.Duration // Retry interval when not holding a lease
+	Err              error         // The most recent acquisition error
 }
 
 // IsZero returns true if the state holds a zero value.
 func (s *State) IsZero() bool {
-	if s.Online || s.Acquired {
+	if s.Online || s.Acquired || s.LeaseNotRequired {
 		return false
 	}
 
-	if s.Lease.Specified() {
+	if !s.Lease.Subject.Empty() {
 		return false
 	}
 
