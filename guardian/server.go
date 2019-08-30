@@ -171,8 +171,6 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printf(s.Logger, "Lease requested: %s\n", req.Subject)
-
 	// TODO: When the matching policy set dictates consumption of more than
 	// one resource, produce a lease for each one.
 
