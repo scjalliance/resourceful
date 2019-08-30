@@ -18,6 +18,7 @@ import (
 // ManagedProcess represents a process for which policies are being enforced.
 type ManagedProcess struct {
 	proc       Process
+	instance   lease.Instance
 	maintainer *guardian.LeaseMaintainer
 	logger     Logger
 	stop       context.CancelFunc
@@ -58,6 +59,7 @@ func Manage(client *guardian.Client, proc Process, instance lease.Instance, pass
 
 	mp := &ManagedProcess{
 		proc:       proc,
+		instance:   instance,
 		maintainer: maintainer,
 		logger:     logger,
 		stop:       cancel,
@@ -109,6 +111,8 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 		exited <- ref.Wait(ctx)
 	}()
 
+	prefix := fmt.Sprintf("PROCESS: %s (%s)", mp.proc.Name, mp.instance.ID)
+
 	var termPending bool
 
 	mp.maintainer.Start()
@@ -118,11 +122,11 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 		case err := <-exited:
 			switch err {
 			case nil:
-				mp.log("Process exited: %s", mp.proc.Name)
+				mp.log("%s: Exited", prefix)
 			case context.Canceled, context.DeadlineExceeded:
-				mp.log("Ceasing management of process: %s", mp.proc.Name)
+				mp.log("%s: Ceasing management", prefix)
 			default:
-				mp.log("Process observation failed: %s: %v", mp.proc.Name, err)
+				mp.log("%s: Observation failed: %v", prefix, err)
 				// FIXME: Continue holding a lease but release the reference?
 			}
 			go mp.maintainer.Close()
@@ -132,29 +136,36 @@ func (mp *ManagedProcess) manage(ctx context.Context, ref *winproc.Ref, stopped 
 			return
 		case state, ok := <-ch:
 			if !ok {
-				mp.log("Lease maintainer closed for %s", mp.proc.Name)
+				mp.log("%s: Lease maintainer closed", prefix)
 				return
 			}
-			if state.Acquired {
+			switch {
+			case state.Acquired:
 				switch state.Lease.Status {
 				case lease.Active:
 					termPending = false
-					mp.log("Lease: %s", state.Lease.Subject)
+					mp.log("%s: Leased (%s, %s)", prefix, state.Lease.Resource, state.Lease.Duration)
 				case lease.Queued:
-					mp.log("Queued: %s", state.Lease.Subject)
+					mp.log("%s: Queued (%s)", prefix, state.Lease.Resource)
 				}
+			case state.LeaseNotRequired:
+				mp.log("%s: Lease Not Required", prefix)
 			}
-			if !state.Acquired || state.Lease.Status != lease.Active {
+			if (!state.Acquired && !state.LeaseNotRequired) || state.Lease.Status != lease.Active {
+				uptime := time.Now().Sub(mp.proc.Times.Creation)
+				if uptime < time.Second*5 {
+					// Insta-kill
+				}
 				if !termPending {
-					mp.log("Terminating %s", mp.proc.Name)
+					mp.log("%s: Terminating", prefix)
 				}
 				if err := ref.Terminate(5877); err != nil {
 					if !termPending {
-						mp.log("Failed to terminate %s: %v", mp.proc.Name, err)
+						mp.log("%s: Termination failed: %v", prefix, err)
 						termPending = true
 					}
 				} else {
-					mp.log("Terminated %s", mp.proc.Name)
+					mp.log("%s: Terminated", prefix)
 				}
 			}
 		}
