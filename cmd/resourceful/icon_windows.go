@@ -8,7 +8,7 @@ import (
 )
 
 func programIcon() *leaseui.Icon {
-	icon, err := walk.NewIconFromResourceId(5)
+	icon, err := walk.NewIconFromResourceId(2)
 	if err != nil {
 		return leaseui.DefaultIcon()
 	}
