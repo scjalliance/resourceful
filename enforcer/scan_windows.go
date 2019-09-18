@@ -11,7 +11,7 @@ import (
 // might be applicable.
 //
 // TODO: Accept an environment to be used in policy evaluation?
-func Scan(policies policy.Set) ([]Process, error) {
+func Scan(policies policy.Set) ([]ProcessData, error) {
 	// Detect the current hostname
 	/*
 		hostname, err := os.Hostname()

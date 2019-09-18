@@ -4,7 +4,7 @@ package enforcer
 
 // Blacklisted returns true if p is a blacklisted process that must not
 // be managed.
-func Blacklisted(p Process) bool {
+func Blacklisted(p ProcessData) bool {
 	return p.Protected()
 
 	// TODO: Skip anything running as something other than the session's user

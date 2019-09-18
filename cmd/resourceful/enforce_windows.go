@@ -21,13 +21,7 @@ func enforce(ctx context.Context, server string, interactive, passive bool) {
 
 	var logger enforcer.Logger
 	if interactive {
-		logger = loggerFunc(func(format string, v ...interface{}) {
-			s := fmt.Sprintf(format, v...)
-			if len(s) == 0 || s[len(s)-1] != '\n' {
-				s = s + "\n"
-			}
-			fmt.Print(s)
-		})
+		logger = cliLogger{}
 		prepareConsole(false)
 	} else {
 		elog, err := eventlog.Open(enforcer.ServiceName)
@@ -35,9 +29,17 @@ func enforce(ctx context.Context, server string, interactive, passive bool) {
 			return
 		}
 		defer elog.Close()
-		logger = loggerFunc(func(format string, v ...interface{}) {
-			elog.Info(0, fmt.Sprintf(format, v))
-		})
+		logger = svcLogger{elog: elog}
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		fmt.Printf("Failed to query executable: %v\n", err)
+		os.Exit(1)
+	}
+	uiCommand := enforcer.Command{
+		Path: executable,
+		Args: []string{"ui"},
 	}
 
 	hostname, err := os.Hostname()
@@ -46,7 +48,7 @@ func enforce(ctx context.Context, server string, interactive, passive bool) {
 		os.Exit(1)
 	}
 
-	service := enforcer.New(client, time.Second, time.Minute, hostname, passive, logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, hostname, passive, logger)
 
 	if interactive {
 		service.Start()

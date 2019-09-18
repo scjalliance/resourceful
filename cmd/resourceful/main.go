@@ -32,9 +32,10 @@ func main() {
 	)
 
 	var (
-		enforceCmd     = app.Command("enforce", "Enforces resourceful policies on the local machine.")
-		enforceServer  = enforceCmd.Flag("server", "Guardian policy server host and port.").Short('s').String()
-		enforcePassive = enforceCmd.Flag("passive", "Run passively without killing processes.").Bool()
+		enforceCmd         = app.Command("enforce", "Enforces resourceful policies on the local machine.")
+		enforceServer      = enforceCmd.Flag("server", "Guardian policy server host and port.").Short('s').String()
+		enforcePassive     = enforceCmd.Flag("passive", "Run passively without killing processes.").Bool()
+		enforceInteractive = enforceCmd.Flag("interactive", "Force service to run interactively.").Short('i').Bool()
 	)
 
 	var (
@@ -42,6 +43,10 @@ func main() {
 		runServer  = runCmd.Flag("server", "Guardian policy server host and port.").Short('s').String()
 		runProgram = runCmd.Arg("program", "program to run").Required().String()
 		runArgs    = runCmd.Arg("arguments", "program arguments").Strings()
+	)
+
+	var (
+		uiCmd = app.Command("ui", "Starts a user interface management daemon")
 	)
 
 	var (
@@ -67,6 +72,9 @@ func main() {
 	if err != nil {
 		app.Fatalf("%s", err)
 	}
+	if *enforceInteractive {
+		interactive = true
+	}
 
 	// Prepare a logger that prints to stderr
 	logger := log.New(os.Stderr, "", log.LstdFlags)
@@ -84,6 +92,8 @@ func main() {
 	ctx := announcement.Context()
 
 	switch command {
+	case uiCmd.FullCommand():
+		ui(ctx)
 	case runCmd.FullCommand():
 		run(ctx, *runServer, *runProgram, *runArgs)
 	case listCmd.FullCommand():

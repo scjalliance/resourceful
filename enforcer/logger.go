@@ -2,13 +2,7 @@
 
 package enforcer
 
-// A Logger is capable of logging enforcement messages.
+// A Logger is capable of logging events from an enforcement service.
 type Logger interface {
-	Printf(string, ...interface{})
+	Log(Event)
 }
-
-/*
-type EventLogger interface {
-	Log(event)
-}
-*/
