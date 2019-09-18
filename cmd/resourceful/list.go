@@ -6,22 +6,26 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
+	"strconv"
 
 	ps "github.com/mitchellh/go-ps"
-	"github.com/scjalliance/resourceful/policy"
-	"github.com/scjalliance/resourceful/strategy"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 func list(ctx context.Context, server string) {
 	prepareConsole(false)
 
-	var criteria policy.Criteria
-	for _, target := range os.Args[2:] {
-		criteria = append(criteria, policy.Criterion{Component: policy.ComponentResource, Comparison: policy.ComparisonIgnoreCase, Value: target})
+	host, err := os.Hostname()
+	if err != nil {
+		fmt.Printf("Failed to query local hostname: %v\n", err)
+		os.Exit(1)
 	}
 
-	pol := policy.New("test", strategy.Instance, 1, time.Minute*5, criteria)
+	policies, err := collectPolicies(ctx, server)
+	if err != nil {
+		fmt.Printf("Failed to collect resourceful policies: %v\n", err)
+		os.Exit(1)
+	}
 
 	procs, err := ps.Processes()
 	if err != nil {
@@ -30,14 +34,19 @@ func list(ctx context.Context, server string) {
 	}
 
 	if len(procs) == 0 {
-		fmt.Println("No matching processes.")
+		fmt.Printf("No matching processes.\n")
 		os.Exit(0)
 	}
 
-	fmt.Print("Matching processes:")
-	for _, proc := range procs {
-		if pol.Match(proc.Executable(), "user", nil) {
-			fmt.Printf("\n  %v", proc.Executable())
+	fmt.Printf("Matching processes:\n")
+	for _, p := range procs {
+		props := lease.Properties{
+			"program.name": p.Executable(),
+			"process.id":   strconv.Itoa(p.Pid()),
+			"host.name":    host,
+		}
+		if matches := policies.Match(props); len(matches) > 0 {
+			fmt.Printf("  %s\n", p.Executable())
 		}
 	}
 }
