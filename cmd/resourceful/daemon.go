@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gentlemanautomaton/signaler"
 
 	"github.com/boltdb/bolt"
 	"github.com/scjalliance/resourceful/guardian"
@@ -18,7 +19,34 @@ import (
 	"github.com/scjalliance/resourceful/provider/fsprov"
 	"github.com/scjalliance/resourceful/provider/logprov"
 	"github.com/scjalliance/resourceful/provider/memprov"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
+
+// GuardianCommand returns a guardian command and configuration for app.
+func GuardianCommand(app *kingpin.Application) (*kingpin.CmdClause, *GuardianConfig) {
+	cmd := app.Command("guardian", "Runs a guardian policy server.")
+	conf := &GuardianConfig{}
+	conf.Bind(cmd)
+	return cmd, conf
+}
+
+// GuardianConfig holds configuration for the guardian command.
+type GuardianConfig struct {
+	LeaseStorage string
+	BoltPath     string
+	PolicyPath   string
+	TxPath       string
+	Schedule     string
+}
+
+// Bind binds the guardian configuration to the command.
+func (conf *GuardianConfig) Bind(cmd *kingpin.CmdClause) {
+	cmd.Flag("leasestore", "lease storage type").Envar("LEASE_STORE").Default(defaultLeaseStorage).EnumVar(&conf.LeaseStorage, "bolt", "memory")
+	cmd.Flag("boltpath", "bolt database file path").Envar("BOLT_PATH").Default(defaultBoltPath).StringVar(&conf.BoltPath)
+	cmd.Flag("policypath", "policy directory path").Envar("POLICY_PATH").StringVar(&conf.PolicyPath)
+	cmd.Flag("txlog", "transaction log file path").Envar("TRANSACTION_LOG").Default(defaultTransactionPath).StringVar(&conf.TxPath)
+	cmd.Flag("cpschedule", "transaction checkpoint schedule").Envar("CHECKPOINT_SCHEDULE").StringVar(&conf.Schedule)
+}
 
 const (
 	defaultLeaseStorage    = "memory"
@@ -26,27 +54,36 @@ const (
 	defaultTransactionPath = "resourceful.tx.log"
 )
 
-func daemon(ctx context.Context, logger *log.Logger, leaseStorage, boltPath, policyPath, txPath, schedule string) (err error) {
+func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 	prepareConsole(false)
 
-	if policyPath == "" {
+	// Prepare a logger that prints to stderr
+	logger := log.New(os.Stderr, "", log.LstdFlags)
+
+	// Announce termination
+	announcement := shutdown.Then(func() { logger.Println("Received termination signal") })
+
+	// Cancel the context after the announcement
+	ctx := announcement.Context()
+
+	if conf.PolicyPath == "" {
 		// Use the working directory as the default source for policy files
-		policyPath, err = os.Getwd()
+		conf.PolicyPath, err = os.Getwd()
 		if err != nil {
 			logger.Printf("Unable to detect working directory: %v", err)
 			return
 		}
 	}
 
-	policyPath, err = filepath.Abs(policyPath)
+	conf.PolicyPath, err = filepath.Abs(conf.PolicyPath)
 	if err != nil {
-		logger.Printf("Invalid policy path directory \"%s\": %v", policyPath, err)
+		logger.Printf("Invalid policy path directory \"%s\": %v", conf.PolicyPath, err)
 		return
 	}
 
 	var checkpointSchedule []logprov.Schedule
-	if schedule != "" {
-		checkpointSchedule, err = logprov.ParseSchedule(schedule)
+	if conf.Schedule != "" {
+		checkpointSchedule, err = logprov.ParseSchedule(conf.Schedule)
 		if err != nil {
 			logger.Printf("Unable to parse transaction checkpoint schedule: %v", err)
 			return
@@ -56,7 +93,7 @@ func daemon(ctx context.Context, logger *log.Logger, leaseStorage, boltPath, pol
 	logger.Println("Starting resourceful guardian daemon")
 	defer logger.Printf("Stopped resourceful guardian daemon")
 
-	txFile, err := createTransactionLog(txPath)
+	txFile, err := createTransactionLog(conf.TxPath)
 	if err != nil {
 		logger.Printf("Unable to open transaction log: %v", err)
 		return
@@ -65,7 +102,7 @@ func daemon(ctx context.Context, logger *log.Logger, leaseStorage, boltPath, pol
 		defer txFile.Close()
 	}
 
-	leaseProvider, err := createLeaseProvider(leaseStorage, boltPath)
+	leaseProvider, err := createLeaseProvider(conf.LeaseStorage, conf.BoltPath)
 	if err != nil {
 		logger.Printf("Unable to create lease provider: %v", err)
 		return
@@ -78,7 +115,7 @@ func daemon(ctx context.Context, logger *log.Logger, leaseStorage, boltPath, pol
 
 	defer closeProvider(leaseProvider, "lease", logger)
 
-	policyProvider := cacheprov.New(fsprov.New(policyPath))
+	policyProvider := cacheprov.New(fsprov.New(conf.PolicyPath))
 
 	defer closeProvider(policyProvider, "policy", logger)
 
@@ -92,7 +129,7 @@ func daemon(ctx context.Context, logger *log.Logger, leaseStorage, boltPath, pol
 
 	logger.Printf("Created providers (policy: %s, lease: %s)", policyProvider.ProviderName(), leaseProvider.ProviderName())
 
-	logger.Printf("Policy source directory: %s\n", policyPath)
+	logger.Printf("Policy source directory: %s\n", conf.PolicyPath)
 	// Verify that we're starting with a good policy set
 	policies, err := cfg.PolicyProvider.Policies()
 	if err != nil {

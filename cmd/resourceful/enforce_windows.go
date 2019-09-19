@@ -12,25 +12,41 @@ import (
 	"golang.org/x/sys/windows/svc/eventlog"
 )
 
-func enforce(ctx context.Context, server string, interactive, passive bool) {
-	client, err := newClient(ctx, server)
+func enforceService(conf EnforceConfig, confErr error) {
+	elog, err := eventlog.Open(enforcer.ServiceName)
+	if err != nil {
+		return
+	}
+	defer elog.Close()
+
+	elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Starting %s service.", enforcer.ServiceName))
+	defer func() {
+		elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Stopped %s service.", enforcer.ServiceName))
+	}()
+
+	logger := svcLogger{elog: elog}
+
+	handler := Handler{
+		Name:    enforcer.ServiceName,
+		Conf:    conf,
+		ConfErr: confErr,
+		Logger:  logger,
+	}
+
+	if err := handler.Run(); err != nil {
+		elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Error running service: %v", err))
+	}
+}
+
+func enforceInteractive(ctx context.Context, conf EnforceConfig) {
+	client, err := newClient(ctx, conf.Server)
 	if err != nil {
 		fmt.Printf("Enforcement failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	var logger enforcer.Logger
-	if interactive {
-		logger = cliLogger{}
-		prepareConsole(false)
-	} else {
-		elog, err := eventlog.Open(enforcer.ServiceName)
-		if err != nil {
-			return
-		}
-		defer elog.Close()
-		logger = svcLogger{elog: elog}
-	}
+	logger := cliLogger{}
+	prepareConsole(false)
 
 	executable, err := os.Executable()
 	if err != nil {
@@ -48,22 +64,9 @@ func enforce(ctx context.Context, server string, interactive, passive bool) {
 		os.Exit(1)
 	}
 
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, hostname, passive, logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, hostname, conf.Passive, logger)
 
-	if interactive {
-		service.Start()
-		<-ctx.Done()
-		service.Stop()
-		return
-	}
-
-	handler := enforcer.Handler{
-		Name:    enforcer.ServiceName,
-		Service: service,
-	}
-
-	if err := handler.Run(); err != nil {
-		fmt.Printf("Error running service: %v\n", err)
-		os.Exit(1)
-	}
+	service.Start()
+	<-ctx.Done()
+	service.Stop()
 }

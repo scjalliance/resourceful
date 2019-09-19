@@ -13,7 +13,7 @@ import (
 	"github.com/scjalliance/resourceful/lease"
 )
 
-func list(ctx context.Context, server string) {
+func list(ctx context.Context, conf ListConfig) {
 	prepareConsole(false)
 
 	host, err := os.Hostname()
@@ -22,7 +22,7 @@ func list(ctx context.Context, server string) {
 		os.Exit(1)
 	}
 
-	policies, err := collectPolicies(ctx, server)
+	policies, err := collectPolicies(ctx, conf.Server)
 	if err != nil {
 		fmt.Printf("Failed to collect resourceful policies: %v\n", err)
 		os.Exit(1)

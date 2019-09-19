@@ -9,21 +9,44 @@ import (
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease/leaseui"
 	"github.com/scjalliance/resourceful/runner"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
+
+// RunCommand returns a run command and configuration for app.
+func RunCommand(app *kingpin.Application) (*kingpin.CmdClause, *RunConfig) {
+	cmd := app.Command("run", "Runs a program if a lease can be procured for it.")
+	conf := &RunConfig{}
+	conf.Bind(cmd)
+	return cmd, conf
+}
+
+// RunConfig holds configuration for the run command.
+type RunConfig struct {
+	Server  string
+	Program string
+	Args    []string
+}
+
+// Bind binds the guardian configuration to the command.
+func (conf *RunConfig) Bind(cmd *kingpin.CmdClause) {
+	cmd.Flag("server", "Guardian policy server host and port.").Short('s').StringVar(&conf.Server)
+	cmd.Arg("program", "program to run").Required().StringVar(&conf.Program)
+	cmd.Arg("arguments", "program arguments").StringsVar(&conf.Args)
+}
 
 func runError(err error) {
 	leaseui.Notify("resourceful run error", err.Error())
 	os.Exit(2)
 }
 
-func run(ctx context.Context, server, program string, args []string) {
-	if program == "" {
+func run(ctx context.Context, conf RunConfig) {
+	if conf.Program == "" {
 		runError(errors.New("no executable path provided to run"))
 	}
 
 	var endpoints []guardian.Endpoint
-	if server != "" {
-		endpoints = append(endpoints, guardian.Endpoint(server))
+	if conf.Server != "" {
+		endpoints = append(endpoints, guardian.Endpoint(conf.Server))
 	} else {
 		var err error
 		endpoints, err = collectEndpoints(ctx)
@@ -32,20 +55,16 @@ func run(ctx context.Context, server, program string, args []string) {
 		}
 	}
 
-	icon := programIcon()
-
-	config := runner.Config{
-		Icon:    icon,
-		Program: program,
-		Args:    args,
-	}
-
 	client, err := guardian.NewClient(endpoints...)
 	if err != nil {
 		runError(fmt.Errorf("unable to create resourceful guardian client: %v", err))
 	}
 
-	err = runner.Run(ctx, client, config)
+	err = runner.Run(ctx, client, runner.Config{
+		Icon:    programIcon(),
+		Program: conf.Program,
+		Args:    conf.Args,
+	})
 	if err != nil {
 		runError(err)
 	}

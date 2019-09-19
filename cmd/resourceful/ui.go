@@ -1,14 +1,8 @@
-// +build !windows
-
 package main
 
-import (
-	"context"
-	"fmt"
-	"os"
-)
+import "gopkg.in/alecthomas/kingpin.v2"
 
-func ui(ctx context.Context) {
-	fmt.Printf("The resourceful ui can only be run on windows.\n")
-	os.Exit(1)
+// UICommand returns a user interface command for app.
+func UICommand(app *kingpin.Application) *kingpin.CmdClause {
+	return app.Command("ui", "Starts a user interface management daemon.")
 }
