@@ -104,7 +104,8 @@ func (s *Session) Connect() error {
 
 	cmd := exec.CommandContext(ctx, s.cmd.Path, s.cmd.Args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Token: token,
+		HideWindow: true,
+		Token:      token,
 	}
 
 	writer, err := cmd.StdinPipe()
