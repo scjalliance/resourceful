@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"os/exec"
 	"os/user"
 	"path/filepath"
 
@@ -15,7 +16,7 @@ func Properties(c Config, host string, u *user.User) lease.Properties {
 	program := c.Program
 	path := c.Program
 
-	if abs, err := filepath.Abs(program); err == nil {
+	if abs, err := exec.LookPath(program); err == nil {
 		path = abs
 		program = filepath.Base(path)
 	}
