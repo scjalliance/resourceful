@@ -24,8 +24,8 @@ type PoliciesResponse struct {
 
 // LeasesResponse reports the current sef of leases for a resource.
 type LeasesResponse struct {
-	Request
-	Leases lease.Set `json:"leases"`
+	Resources []string  `json:"resources"`
+	Leases    lease.Set `json:"leases"`
 }
 
 // AcquireResponse reports the result of a resource acquisition attempt.

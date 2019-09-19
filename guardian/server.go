@@ -142,17 +142,38 @@ func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	revision, leases, err := s.LeaseProvider.LeaseView(req.Resource)
-	if err != nil {
-		printf(s.Logger, "Lease retrieval failed: %v\n", err)
+	var resources []string
+	if req.Resource == "" {
+		resources, err = s.LeaseProvider.LeaseResources()
+		if err != nil {
+			printf(s.Logger, "Resource retrieval failed: %v\n", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		resources = []string{req.Resource}
 	}
-	now := time.Now()
-	tx := lease.NewTx(req.Resource, revision, leases)
-	leaseutil.Refresh(tx, now)
+
+	var leases lease.Set
+	for _, resource := range resources {
+		revision, resourceLeases, err := s.LeaseProvider.LeaseView(resource)
+		if err != nil {
+			printf(s.Logger, "Lease retrieval failed: %v\n", err)
+		}
+		now := time.Now()
+		tx := lease.NewTx(resource, revision, resourceLeases)
+		leaseutil.Refresh(tx, now)
+		txLeases := tx.Leases()
+		if len(leases) == 0 {
+			leases = txLeases
+		} else {
+			leases = append(leases, txLeases...)
+		}
+	}
 
 	response := transport.LeasesResponse{
-		Request: req,
-		Leases:  tx.Leases(),
+		Resources: resources,
+		Leases:    leases,
 	}
 	data, err := json.MarshalIndent(response, "", "\t")
 	if err != nil {
