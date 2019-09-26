@@ -5,10 +5,19 @@ package enforcer
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/gentlemanautomaton/winsession"
 	"github.com/gentlemanautomaton/winsession/connstate"
+	"github.com/scjalliance/resourceful/enforcerui"
 )
+
+// sessionAttempt records information about the last time a connection
+// was attempted with a session
+type sessionAttempt struct {
+	Attempt time.Time
+	Wait    time.Duration
+}
 
 // SessionManager manages communication with any number of windows sessions.
 //
@@ -17,8 +26,9 @@ type SessionManager struct {
 	command Command
 	logger  Logger
 
-	mutex   sync.RWMutex
-	managed map[SessionID]*Session
+	mutex     sync.RWMutex
+	managed   map[SessionID]*Session
+	attempted map[SessionID]sessionAttempt
 }
 
 // NewSessionManager returns a new session manager that is ready for use.
@@ -26,9 +36,10 @@ type SessionManager struct {
 // The given command describes what process to launch within each session.
 func NewSessionManager(cmd Command, logger Logger) *SessionManager {
 	return &SessionManager{
-		command: cmd,
-		logger:  logger,
-		managed: make(map[SessionID]*Session, 8),
+		command:   cmd,
+		logger:    logger,
+		managed:   make(map[SessionID]*Session, 8),
+		attempted: make(map[SessionID]sessionAttempt, 8),
 	}
 }
 
@@ -50,6 +61,7 @@ func (m *SessionManager) Scan() error {
 		return nil
 	}
 
+	now := time.Now()
 	scanned := make(map[winsession.ID]struct{}, len(sessions))
 
 	m.mutex.Lock()
@@ -65,6 +77,13 @@ func (m *SessionManager) Scan() error {
 			continue
 		}
 
+		// Wait before retrying connections that previously failed
+		if attempt, ok := m.attempted[id]; ok {
+			if now.Sub(attempt.Attempt) < attempt.Wait {
+				continue
+			}
+		}
+
 		pending = append(pending, session)
 	}
 
@@ -77,24 +96,40 @@ func (m *SessionManager) Scan() error {
 		}
 	}
 
+	for id := range m.attempted {
+		if _, exists := scanned[id]; !exists {
+			delete(m.attempted, id)
+		}
+	}
+
 	// Establish a connection with newly discovered sessions
 	for _, data := range pending {
 		data := data
+		id := data.ID
 		session := NewSession(data, m.command, 64, m.logger)
-		m.managed[data.ID] = session
+		m.managed[id] = session
 		go func() {
-			if err := session.Connect(); err != nil {
-				// TODO: Try again?
-				m.mutex.Lock()
-				defer m.mutex.Unlock()
-				if m.managed[data.ID] == session {
-					delete(m.managed, data.ID)
+			now := time.Now()
+			err := session.Connect()
+
+			m.mutex.Lock()
+			if err != nil {
+				if m.managed[id] == session {
+					delete(m.managed, id)
+					m.attempted[id] = nextSessionAttempt(m.attempted[id], now)
 				}
+			} else {
+				delete(m.attempted, id)
+			}
+			m.mutex.Unlock()
+
+			if err != nil {
+				return
 			}
 
 			// Send the current policy set to the session
 			/*
-				mgr.Send(enforcerui.Message{
+				session.Send(enforcerui.Message{
 					Type: "policy.change",
 					PolicyChange: enforcerui.PolicyChange{
 						New: m.Policies(),
@@ -107,16 +142,14 @@ func (m *SessionManager) Scan() error {
 	return nil
 }
 
-/*
 // Send sends the given message to the ui process running in each session.
-func (s *Service) Send(msg enforcerui.Message) {
-	s.sessionMutex.Lock()
-	defer s.sessionMutex.Unlock()
-	for _, session := range s.sessions {
+func (m *SessionManager) Send(msg enforcerui.Message) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	for _, session := range m.managed {
 		session.Send(msg)
 	}
 }
-*/
 
 // Stop causes the session manager to stop all session management.
 func (m *SessionManager) Stop() {
@@ -146,4 +179,30 @@ func (m *SessionManager) debug(format string, v ...interface{}) {
 		Msg:   fmt.Sprintf(format, v...),
 		Debug: true,
 	})
+}
+
+// nextSessionAttempt calculates the retry backoff after failed session
+// connection attempts.
+func nextSessionAttempt(last sessionAttempt, now time.Time) (next sessionAttempt) {
+	const (
+		minWait = 30 * time.Second
+		maxWait = 5 * time.Minute
+	)
+
+	if last.Attempt.IsZero() {
+		return sessionAttempt{
+			Attempt: now,
+			Wait:    minWait,
+		}
+	}
+
+	wait := last.Wait
+	wait *= 2
+	if wait > maxWait {
+		wait = maxWait
+	}
+	return sessionAttempt{
+		Attempt: now,
+		Wait:    wait,
+	}
 }
