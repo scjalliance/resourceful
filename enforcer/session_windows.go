@@ -49,7 +49,7 @@ func NewSession(data SessionData, cmd Command, bufSize int, logger Logger) *Sess
 	}
 }
 
-// Send sends msg to s. It returns an error if the message buffer for
+// Send sends msg to s. It returns false if the message buffer for
 // s is full.
 func (s *Session) Send(msg enforcerui.Message) (ok bool) {
 	select {
@@ -73,8 +73,6 @@ func (m *SessionManager) SendPolicyChange(oldPol, newPol policy.Set) bool {
 func (s *Session) Connect() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
-	// TODO: Implement back-off
 
 	if s.stopped != nil {
 		return errors.New("a connection has already been established")
