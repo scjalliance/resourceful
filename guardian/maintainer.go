@@ -22,7 +22,6 @@ type Acquisition struct {
 type LeaseMaintainer struct {
 	client   *Client
 	instance lease.Instance
-	props    lease.Properties
 	retry    time.Duration // 0 == no retry
 	// maxRetries?
 
@@ -32,6 +31,7 @@ type LeaseMaintainer struct {
 
 	stateMutex sync.RWMutex
 	state      lease.State
+	props      lease.Properties
 	listeners  []chan lease.State
 }
 
@@ -118,6 +118,16 @@ func (lm *LeaseMaintainer) Close() error {
 	lm.listeners = nil
 
 	return nil
+}
+
+// Update instructs the lease maintainer to update the properties of the
+// lease.
+func (lm *LeaseMaintainer) Update(props lease.Properties) {
+	lm.stateMutex.Lock()
+	defer lm.stateMutex.Unlock()
+	lm.props = props
+
+	// TODO: Issue an acquisition?
 }
 
 // State returns the current lease state.
