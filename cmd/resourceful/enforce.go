@@ -15,6 +15,7 @@ type EnforceConfig struct {
 	Server      string
 	Passive     bool
 	Interactive bool
+	Debug       bool
 }
 
 // Bind binds the enforce configuration to the command.
@@ -22,4 +23,5 @@ func (conf *EnforceConfig) Bind(cmd *kingpin.CmdClause) {
 	cmd.Flag("server", "Guardian policy server host and port.").Short('s').StringVar(&conf.Server)
 	cmd.Flag("passive", "Run passively without killing processes.").Short('p').BoolVar(&conf.Passive)
 	cmd.Flag("interactive", "Force service to run interactively.").Short('i').BoolVar(&conf.Interactive)
+	cmd.Flag("verbose", "Run with extra debug logging").Short('v').BoolVar(&conf.Debug)
 }

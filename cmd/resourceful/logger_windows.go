@@ -9,9 +9,14 @@ import (
 	"golang.org/x/sys/windows/svc/eventlog"
 )
 
-type cliLogger struct{}
+type cliLogger struct {
+	Debug bool
+}
 
 func (l cliLogger) Log(e enforcer.Event) {
+	if e.IsDebug() && !l.Debug {
+		return
+	}
 	s := e.String()
 	if len(s) == 0 || s[len(s)-1] != '\n' {
 		s = s + "\n"

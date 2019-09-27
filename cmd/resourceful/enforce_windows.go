@@ -34,7 +34,7 @@ func enforceService(conf EnforceConfig, confErr error) {
 	}
 
 	if err := handler.Run(); err != nil {
-		elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Error running service: %v", err))
+		elog.Error(enforcer.ServiceEventID, fmt.Sprintf("Error running service: %v", err))
 	}
 }
 
@@ -45,7 +45,9 @@ func enforceInteractive(ctx context.Context, conf EnforceConfig) {
 		os.Exit(1)
 	}
 
-	logger := cliLogger{}
+	logger := cliLogger{
+		Debug: conf.Debug,
+	}
 	prepareConsole(false)
 
 	executable, err := os.Executable()
