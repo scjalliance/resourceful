@@ -31,15 +31,20 @@ type Service struct {
 
 // New returns a new policy enforcement service with the given client.
 func New(client *guardian.Client, enforcementInterval, policyInterval time.Duration, ui Command, hostname string, passive bool, logger Logger) *Service {
+	var (
+		policies = NewPolicyManager(client, logger)
+		sessions = NewSessionManager(ui, logger)
+		procs    = NewProcessManager(client, hostname, passive, sessions, logger)
+	)
 	return &Service{
 		client:              client,
 		enforcementInterval: enforcementInterval,
 		policyInterval:      policyInterval,
 		passive:             passive,
 		logger:              logger,
-		policies:            NewPolicyManager(client, logger),
-		sessions:            NewSessionManager(ui, logger),
-		procs:               NewProcessManager(client, hostname, passive, logger),
+		policies:            policies,
+		sessions:            sessions,
+		procs:               procs,
 	}
 }
 
@@ -107,6 +112,7 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	// Update policies on an interval
 	go func() {
 		defer wg.Done()
+		defer s.debug("Stopped policy manager")
 
 		// Attempt initial retrieval of policies
 		s.policies.Update()
@@ -148,10 +154,14 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	wg.Wait()
 
 	// Stop all process management
+	s.debug("Stopping process manager")
 	s.procs.Stop()
+	s.debug("Stopped process manager")
 
 	// Stop all session management
+	s.debug("Stopping session manager")
 	s.sessions.Stop()
+	s.debug("Stopped session manager")
 }
 
 func (s *Service) log(format string, v ...interface{}) {
