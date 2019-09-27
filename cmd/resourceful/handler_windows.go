@@ -137,15 +137,16 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 			time.Sleep(100 * time.Millisecond)
 			changes <- req.CurrentStatus
 		case svc.Stop, svc.Shutdown:
+			changes <- svc.Status{State: svc.StopPending}
 			h.log("Service shutting down.")
 			return false, 0
 		case svc.Pause:
-			h.log("Service paused.")
 			changes <- svc.Status{State: svc.Paused, Accepts: cmdsAccepted}
+			h.log("Service paused.")
 			service.Stop()
 		case svc.Continue:
-			h.log("Service unpaused.")
 			changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
+			h.log("Service unpaused.")
 			service.Start()
 		}
 	}
