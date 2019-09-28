@@ -135,13 +135,7 @@ func (t *Tray) manage(ctx context.Context, window *walk.MainWindow, ni *walk.Not
 			return
 		case msg := <-t.msgs:
 			switch msg.Type {
-			case "process.terminated":
-				title := fmt.Sprintf("%s Terminated", msg.ProcTerm.Name)
-				text := "A proces has been terminated because there aren't enough licenses available."
-				window.Synchronize(func() {
-					ni.ShowWarning(title, text)
-				})
-			case "policy.change":
+			case TypePolicyChange:
 				var summary string
 				{
 					count := len(msg.PolicyChange.New)
@@ -160,15 +154,29 @@ func (t *Tray) manage(ctx context.Context, window *walk.MainWindow, ni *walk.Not
 					// Update menu
 					actions := ni.ContextMenu().Actions()
 					actions.Clear()
-					for i, pol := range msg.PolicyChange.New {
+					for _, pol := range msg.PolicyChange.New {
 						action := walk.NewAction()
-						desc := fmt.Sprintf("%d: %s", i, pol.Resource)
+						desc := pol.Resource
+						if name := pol.Properties["resource.name"]; name != "" {
+							desc = name
+						}
 						if pol.Limit != policy.DefaultLimit {
 							desc = fmt.Sprintf("%s: %d", desc, pol.Limit)
 						}
 						action.SetText(desc)
 						actions.Add(action)
 					}
+				})
+			case TypeLicenseLost:
+			case TypeProcessTermination:
+				title := "No licenses available"
+				message := fmt.Sprintf("The %s process has been terminated because no licenses are available.", msg.ProcTerm.Name)
+				window.Synchronize(func() {
+					ni.ShowCustom(
+						title,
+						message,
+						t.icon,
+					)
 				})
 			}
 		case <-ctx.Done():

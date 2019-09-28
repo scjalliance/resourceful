@@ -36,9 +36,11 @@ func (ui *UI) Run(ctx context.Context) error {
 		case msg := <-ui.msgs:
 			//fmt.Printf("Message Received: %#v\n", msg)
 			switch msg.Type {
-			case "policy.change":
+			case TypePolicyChange:
 				t.Handle(msg)
 				//additions, deletions := msg.PolicyChange.Old.Diff
+			case TypeProcessTermination:
+				t.Handle(msg)
 			}
 		case <-ctx.Done():
 			return ctx.Err()

@@ -90,6 +90,9 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	var wg sync.WaitGroup
 	wg.Add(3)
 
+	// Attempt initial retrieval of policies
+	s.policies.Update()
+
 	// Perform enforcement on an interval
 	go func() {
 		defer wg.Done()
@@ -114,9 +117,6 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 		defer wg.Done()
 		defer s.debug("Stopped policy manager")
 
-		// Attempt initial retrieval of policies
-		s.policies.Update()
-
 		policyTimer := time.NewTicker(s.policyInterval)
 		defer policyTimer.Stop()
 
@@ -125,7 +125,9 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 			case <-shutdown:
 				return
 			case <-policyTimer.C:
-				s.policies.Update()
+				if changed := s.policies.Update(); changed {
+					s.sessions.UpdatePolicies(s.policies.Policies())
+				}
 			}
 		}
 	}()
@@ -133,6 +135,9 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	// Update sessions on an interval (for now)
 	go func() {
 		defer wg.Done()
+
+		// Prime the session manager with the current policy set
+		s.sessions.UpdatePolicies(s.policies.Policies())
 
 		// Attempt initial scan of sessions
 		s.sessions.Scan()

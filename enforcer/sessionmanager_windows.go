@@ -10,6 +10,7 @@ import (
 	"github.com/gentlemanautomaton/winsession"
 	"github.com/gentlemanautomaton/winsession/connstate"
 	"github.com/scjalliance/resourceful/enforcerui"
+	"github.com/scjalliance/resourceful/policy"
 )
 
 // sessionAttempt records information about the last time a connection
@@ -29,6 +30,7 @@ type SessionManager struct {
 	mutex     sync.RWMutex
 	managed   map[SessionID]*Session
 	attempted map[SessionID]sessionAttempt
+	pols      policy.Set
 }
 
 // NewSessionManager returns a new session manager that is ready for use.
@@ -113,6 +115,7 @@ func (m *SessionManager) Scan() error {
 			err := session.Connect()
 
 			m.mutex.Lock()
+			pols := m.pols
 			if err != nil {
 				if m.managed[id] == session {
 					delete(m.managed, id)
@@ -128,18 +131,24 @@ func (m *SessionManager) Scan() error {
 			}
 
 			// Send the current policy set to the session
-			/*
-				session.Send(enforcerui.Message{
-					Type: "policy.change",
-					PolicyChange: enforcerui.PolicyChange{
-						New: m.Policies(),
-					},
-				})
-			*/
+			session.SendPolicies(pols)
 		}()
 	}
 
 	return nil
+}
+
+// UpdatePolicies sends the policy set to the ui process running in each
+// session.
+func (m *SessionManager) UpdatePolicies(pols policy.Set) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	m.pols = pols
+
+	for _, session := range m.managed {
+		session.SendPolicies(pols)
+	}
 }
 
 // Send sends the given message to the ui process running in each session.

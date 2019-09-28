@@ -36,11 +36,11 @@ func (m *PolicyManager) Policies() policy.Set {
 }
 
 // Update causes the policy manager to update its policy set.
-func (m *PolicyManager) Update() {
+func (m *PolicyManager) Update() (changed bool) {
 	response, err := m.client.Policies()
 	if err != nil {
 		m.log("Failed to retrieve policies: %v", err.Error())
-		return
+		return false
 	}
 
 	updated := response.Policies
@@ -52,7 +52,7 @@ func (m *PolicyManager) Update() {
 
 	additions, deletions := previous.Diff(updated)
 	if len(additions) == 0 && len(deletions) == 0 {
-		return
+		return false
 	}
 
 	for _, pol := range additions {
@@ -62,15 +62,7 @@ func (m *PolicyManager) Update() {
 		m.log("POL: REM %s: %s", pol.Hash().String(), pol.String())
 	}
 
-	/*
-		s.Send(enforcerui.Message{
-			Type: "policy.change",
-			PolicyChange: enforcerui.PolicyChange{
-				Old: previous,
-				New: updated,
-			},
-		})
-	*/
+	return true
 }
 
 func (m *PolicyManager) log(format string, v ...interface{}) {

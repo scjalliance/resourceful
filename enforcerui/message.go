@@ -7,6 +7,13 @@ import (
 	"github.com/scjalliance/resourceful/policy"
 )
 
+// Message Types
+const (
+	TypePolicyChange       = "policy.change"
+	TypeProcessTermination = "process.termination"
+	TypeLicenseLost        = "license.lost"
+)
+
 // Message is a UI message.
 type Message struct {
 	Type         string       `json:"type"`

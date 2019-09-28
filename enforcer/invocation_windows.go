@@ -266,6 +266,9 @@ func (inv *Invocation) maintain(ctx context.Context, absorption <-chan absorptio
 				} else {
 					termPending = true
 					inv.log("Terminated process %d", id)
+					if inv.session != nil {
+						inv.session.SendProcessTermination(process.Data().Name)
+					}
 				}
 			}
 		}

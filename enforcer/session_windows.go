@@ -16,6 +16,7 @@ import (
 	"github.com/gentlemanautomaton/winsession"
 	"github.com/gentlemanautomaton/winsession/wtsapi"
 	"github.com/scjalliance/resourceful/enforcerui"
+	"github.com/scjalliance/resourceful/policy"
 )
 
 // SessionID is a session ID.
@@ -61,12 +62,25 @@ func (s *Session) Send(msg enforcerui.Message) (ok bool) {
 	}
 }
 
-/*
 // SendPolicies attempts to send a policy change message to the session.
-func (m *SessionManager) SendPolicyChange(oldPol, newPol policy.Set) bool {
-
+func (s *Session) SendPolicies(pols policy.Set) (ok bool) {
+	return s.Send(enforcerui.Message{
+		Type: enforcerui.TypePolicyChange,
+		PolicyChange: enforcerui.PolicyChange{
+			New: pols,
+		},
+	})
 }
-*/
+
+// SendProcessTermination sends a process termination message to the session.
+func (s *Session) SendProcessTermination(name string) bool {
+	return s.Send(enforcerui.Message{
+		Type: enforcerui.TypeProcessTermination,
+		ProcTerm: enforcerui.ProcTerm{
+			Name: name,
+		},
+	})
+}
 
 // Connect establishes a connection with s. It launches a ui process as the
 // session's user.
