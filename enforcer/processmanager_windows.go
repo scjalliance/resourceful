@@ -64,15 +64,15 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 				if inv := m.invocations[instance]; inv != nil {
 					inv.Stop()
 					delete(m.invocations, instance)
-					m.log("Stopped management of blacklisted invocation %s", instance)
+					m.log("Stopped management of blacklisted invocation %s (%s)", instance, proc.Name)
 				}
 				// Remove from managed and add to skipped
 				delete(m.managed, id)
 				m.skipped[id] = struct{}{}
-				m.log("Stopped management of blacklisted process %s", id)
+				m.log("Stopped management of blacklisted process %s (%s)", id, proc.Name)
 			} else if _, exists := m.skipped[id]; !exists {
 				// Add to skipped
-				m.log("Skipped management of blacklisted process %s", id)
+				m.log("Skipped management of blacklisted process %s (%s)", id, proc.Name)
 				m.skipped[id] = struct{}{}
 			}
 			continue
@@ -176,7 +176,6 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 		invocation := NewInvocation(m.client, instance, process, m.sessions.Session(SessionID(proc.SessionID)), m.logger)
 		m.invocations[instance] = invocation
 		m.managed[id] = instance
-
 	}
 
 	return nil
