@@ -156,18 +156,24 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 		}
 
 		// Look for an existing invocation that can absorb the process
-		absorbed := false
-		for instance, inv := range m.invocations {
-			absorbed = inv.Absorb(process)
-			if absorbed {
-				m.managed[id] = instance
-				m.debug("Process %s absorbed into instance %s", id, instance.ID)
-				break
+
+		// FIXME: TEMP: Restore absorption when respawns are turned back on.
+		// FIXME: Testing under extreme conditions suggests this absorption
+		//        code can deadlock.
+		/*
+			absorbed := false
+			for instance, inv := range m.invocations {
+				absorbed = inv.Absorb(process)
+				if absorbed {
+					m.managed[id] = instance
+					m.debug("Process %s absorbed into instance %s", id, instance.ID)
+					break
+				}
 			}
-		}
-		if absorbed {
-			continue
-		}
+			if absorbed {
+				continue
+			}
+		*/
 
 		// Create a new invocation
 		instance := Instance(m.hostname, proc, NewInstanceID(proc))
