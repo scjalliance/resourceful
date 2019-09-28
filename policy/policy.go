@@ -24,14 +24,14 @@ import (
 //
 // A policy is applied only if all of its conditions are matched.
 type Policy struct {
-	Resource   string            `json:"resource,omitempty"`
-	Criteria   Criteria          `json:"criteria,omitempty"`
-	Strategy   strategy.Strategy `json:"strategy,omitempty"`
-	Limit      uint              `json:"limit,omitempty"`
-	Duration   time.Duration     `json:"duration,omitempty"` // Time before a leased resource is automatically released
-	Decay      time.Duration     `json:"decay,omitempty"`    // Time before a released resource is considered available again
-	Refresh    lease.Refresh     `json:"refresh,omitempty"`  // Time between lease acquisitions while maintaining a lease
-	Properties lease.Properties  `json:"override,omitempty"` // Properties for matching leases
+	Resource   string            `json:"resource,omitempty"`   // Which resource pool this policy counts against
+	Criteria   Criteria          `json:"criteria,omitempty"`   // Matching criteria for lease properties
+	Strategy   strategy.Strategy `json:"strategy,omitempty"`   // Lease counting strategy
+	Limit      uint              `json:"limit,omitempty"`      // Max concurrent leases
+	Duration   time.Duration     `json:"duration,omitempty"`   // Time before a leased resource is automatically released
+	Decay      time.Duration     `json:"decay,omitempty"`      // Time before a released resource is considered available again
+	Refresh    lease.Refresh     `json:"refresh,omitempty"`    // Time between lease acquisitions while maintaining a lease
+	Properties lease.Properties  `json:"properties,omitempty"` // Merged with each lease's properties
 }
 
 // New returns a new policy for a particular resource with the given limit,
