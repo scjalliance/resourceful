@@ -213,7 +213,10 @@ func (inv *Invocation) maintain(ctx context.Context, absorption <-chan absorptio
 			case nil:
 				if termPending {
 					// Indicate to the main loop that we want to wait for a lease
-					return true
+					//return true
+
+					// FIXME: TEMP: Don't respawn until the UI is better developed
+					return false
 				}
 				inv.log("Exited")
 			case context.Canceled, context.DeadlineExceeded:
