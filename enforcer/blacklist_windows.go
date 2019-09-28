@@ -6,6 +6,7 @@ import "strings"
 
 var blacklist = map[string]bool{
 	"applicationframehost":    true,
+	"backgroundtaskhost":      true,
 	"chrome":                  true,
 	"cmd":                     true,
 	"csrss":                   true,
@@ -14,6 +15,8 @@ var blacklist = map[string]bool{
 	"dllhost":                 true,
 	"dwm":                     true,
 	"explorer":                true,
+	"fontdrvhost":             true,
+	"launchtm":                true,
 	"lockapp":                 true,
 	"lsass":                   true,
 	"mmc":                     true,
@@ -30,6 +33,7 @@ var blacklist = map[string]bool{
 	"services":                true,
 	"shellexperiencehost":     true,
 	"sihost":                  true,
+	"smartscreen":             true,
 	"svchost":                 true,
 	"systemsettings":          true,
 	"systemsettingsbroker":    true,
@@ -39,6 +43,7 @@ var blacklist = map[string]bool{
 	"thunderbolt":             true,
 	"wininit":                 true,
 	"winlogon":                true,
+	"wireguard":               true,
 	"wudfhost":                true,
 	"windowsinternal.composableshell.experiences.textinput.inputapp": true,
 }
