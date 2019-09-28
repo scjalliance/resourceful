@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"syscall"
 
 	"github.com/gentlemanautomaton/winservice"
 	"github.com/scjalliance/resourceful/enforcer"
@@ -35,4 +37,16 @@ func uninstall(ctx context.Context) {
 	} else {
 		fmt.Printf("The \"%s\" service has been uninstalled.\n", enforcer.ServiceName)
 	}
+
+	// Remove registry keys
+	if err := delUninstallRegKeys(); err != nil {
+		fmt.Printf("Failed to remove uninstall entry from the Windows registry: %v\n", err)
+	}
+	fmt.Printf("Removed uninstall entry from from the Windows registry.\n")
+}
+
+// uninstallCommand returns a command line string can be run to uninstall
+// resourceful. The returned string will be properly quoted.
+func uninstallCommand(dir, executable string) string {
+	return syscall.EscapeArg(filepath.Join(dir, executable)) + " uninstall"
 }

@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/gentlemanautomaton/cmdline/cmdlinewindows"
 	"github.com/gentlemanautomaton/filework"
 	"github.com/gentlemanautomaton/filework/fwos"
 	"github.com/gentlemanautomaton/winservice"
@@ -48,6 +50,12 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 	}
 	defer sourceFile.Close()
 
+	// Attempt to read the source file size
+	var size int64
+	if fi, err := sourceFile.Stat(); err == nil {
+		size = fi.Size()
+	}
+
 	// Check to see if there's an existing file with the expected content
 	diff, err := filework.CompareFileContent(sourceFile, fwos.Dir(dest), exe)
 	if err != nil {
@@ -57,7 +65,6 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 	switch diff {
 	case filework.Same:
 		fmt.Printf("Existing %s file is up to date.\n", exe)
-		return
 	case filework.Different:
 		fmt.Printf("Existing %s file is out of date.\n", exe)
 	}
@@ -66,6 +73,25 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 	if err = os.MkdirAll(dest, os.ModePerm); err != nil {
 		fmt.Printf("Failed to create installation directory \"%s\": %v\n", dest, err)
 		os.Exit(1)
+	}
+
+	// Remove previous installation
+	if data, err := getUninstallRegKeys(); err == nil {
+		fmt.Printf("Removing %s version %s.\n", data.DisplayName, data.DisplayVersion)
+		name, args := cmdlinewindows.SplitCommand(data.UninstallCommand)
+		if name == "" {
+			fmt.Printf("Failed to locate uninstaller.\n")
+		} else {
+			fmt.Printf("Executing: %s\n", data.UninstallCommand)
+			cmd := exec.Command(name, args...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Printf("Removal failed: %v", err)
+			} else {
+				fmt.Printf("Removal succeeded.\n")
+			}
+		}
 	}
 
 	// Check for an existing enforcement service
@@ -94,6 +120,12 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 		os.Exit(1)
 	}
 	fmt.Printf("%s copied to %s\n", exe, dest)
+
+	// Add an uninstall entry to the Windows registry
+	if err := addUninstallRegKeys(source, dest, exe, size); err != nil {
+		fmt.Printf("Failed to write uninstall entry to the Windows registry: %v\n", err)
+	}
+	fmt.Printf("Wrote uninstall entry to the Windows registry.\n")
 
 	// TODO: Create a symlink from the root install directory to this version?
 
