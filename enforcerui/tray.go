@@ -22,7 +22,9 @@ type trayData struct {
 
 // Tray runs the enforcer's tray.
 type Tray struct {
-	icon *walk.Icon
+	icon    *walk.Icon
+	name    string
+	version string
 
 	mutex   sync.RWMutex
 	stop    context.CancelFunc
@@ -31,10 +33,12 @@ type Tray struct {
 }
 
 // NewTray returns a new system tray instance.
-func NewTray(icon *walk.Icon) *Tray {
+func NewTray(icon *walk.Icon, name, version string) *Tray {
 	return &Tray{
-		icon: icon,
-		msgs: make(chan Message, 128),
+		icon:    icon,
+		name:    name,
+		version: version,
+		msgs:    make(chan Message, 128),
 	}
 }
 
@@ -146,6 +150,7 @@ func (t *Tray) manage(ctx context.Context, window *walk.MainWindow, ni *walk.Not
 						summary = fmt.Sprintf("Enforcing %d policies", count)
 					}
 				}
+				info := fmt.Sprintf("%s %s", t.name, t.version)
 				window.Synchronize(func() {
 					// Update tool tip
 					fmt.Println(summary)
@@ -154,6 +159,13 @@ func (t *Tray) manage(ctx context.Context, window *walk.MainWindow, ni *walk.Not
 					// Update menu
 					actions := ni.ContextMenu().Actions()
 					actions.Clear()
+					{
+						action := walk.NewAction()
+						action.SetText(info)
+						action.SetEnabled(false)
+						actions.Add(action)
+					}
+					actions.Add(walk.NewSeparatorAction())
 					for _, pol := range msg.PolicyChange.New {
 						action := walk.NewAction()
 						desc := pol.Resource

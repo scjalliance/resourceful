@@ -18,30 +18,14 @@ func ui(ctx context.Context) {
 	ctx, shutdown := context.WithCancel(ctx)
 
 	fmt.Printf("Starting user interface\n")
-	icon, err := walk.NewIconFromResourceId(2)
+	icon, err := walk.NewIconFromResourceId(IconResourceID)
 	if err != nil {
 		fmt.Printf("Failed to load icon from resource: %v\n", err)
 		os.Exit(1)
 	}
 	defer icon.Dispose()
 
-	ui := enforcerui.New(icon)
-
-	/*
-		go func() {
-			pols, err := collectPolicies(ctx, "localhost:5877")
-			if err != nil {
-				shutdown()
-				return
-			}
-			ui.Handle(enforcerui.Message{
-				Type: "policy.update",
-				PolicyChange: enforcerui.PolicyChange{
-					New: pols,
-				},
-			})
-		}()
-	*/
+	ui := enforcerui.New(icon, ProgramName, Version)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
