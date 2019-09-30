@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/scjalliance/resourceful/guardian"
@@ -44,23 +43,9 @@ func run(ctx context.Context, conf RunConfig) {
 		runError(errors.New("no executable path provided to run"))
 	}
 
-	var endpoints []guardian.Endpoint
-	if conf.Server != "" {
-		endpoints = append(endpoints, guardian.Endpoint(conf.Server))
-	} else {
-		var err error
-		endpoints, err = collectEndpoints(ctx)
-		if err != nil {
-			runError(err)
-		}
-	}
+	client := newClient(conf.Server)
 
-	client, err := guardian.NewClient(endpoints...)
-	if err != nil {
-		runError(fmt.Errorf("unable to create resourceful guardian client: %v", err))
-	}
-
-	err = runner.Run(ctx, client, runner.Config{
+	err := runner.Run(ctx, client, runner.Config{
 		Icon:    programIcon(),
 		Program: conf.Program,
 		Args:    conf.Args,

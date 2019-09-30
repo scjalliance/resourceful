@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"time"
@@ -98,17 +97,8 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 	}
 	checkpoint = sendProgress(changes, checkpoint)
 
-	// Prepare a context for the guardian client
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// Prepare a guardian client
-	// TODO: Make this lazy and non-blocking
-	client, err := newClient(ctx, h.Conf.Server)
-	if err != nil {
-		h.log("Failed to create resourceful client: %v", err)
-		return false, 1
-	}
+	client := newClient(h.Conf.Server)
 	checkpoint = sendProgress(changes, checkpoint)
 
 	// Prepare the service

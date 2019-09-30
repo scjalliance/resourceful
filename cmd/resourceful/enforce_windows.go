@@ -39,11 +39,7 @@ func enforceService(conf EnforceConfig, confErr error) {
 }
 
 func enforceInteractive(ctx context.Context, conf EnforceConfig) {
-	client, err := newClient(ctx, conf.Server)
-	if err != nil {
-		fmt.Printf("Enforcement failed: %v\n", err)
-		os.Exit(1)
-	}
+	client := newClient(conf.Server)
 
 	logger := cliLogger{
 		Debug: conf.Debug,

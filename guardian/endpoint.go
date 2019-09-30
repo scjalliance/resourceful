@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/scjalliance/resourceful/guardian/transport"
 	"github.com/scjalliance/resourceful/lease"
@@ -17,34 +16,28 @@ import (
 type Endpoint string
 
 // Health returns the current health of the endpoint.
-func (e Endpoint) Health() (response transport.HealthResponse, err error) {
-	return response, e.get("health", &response)
-}
-
-// HealthWithTimeout returns the current health of the endpoint. The endpoint must
-// respond within the given timeout to be deemed healthy.
-func (e Endpoint) HealthWithTimeout(timeout time.Duration) (response transport.HealthResponse, err error) {
-	return response, e.getWithTimeout("health", &response, timeout)
+func (e Endpoint) Health(ctx context.Context) (response transport.HealthResponse, err error) {
+	return response, e.get(ctx, "health", &response)
 }
 
 // Policies returns the current set of policies from the endpoint.
-func (e Endpoint) Policies() (response transport.PoliciesResponse, err error) {
-	return response, e.get("policies", &response)
+func (e Endpoint) Policies(ctx context.Context) (response transport.PoliciesResponse, err error) {
+	return response, e.get(ctx, "policies", &response)
 }
 
 // Leases returns the current set of leases for a resource from the endpoint.
-func (e Endpoint) Leases(resource string) (response transport.PoliciesResponse, err error) {
-	return response, e.get("leases", &response)
+func (e Endpoint) Leases(ctx context.Context, resource string) (response transport.PoliciesResponse, err error) {
+	return response, e.get(ctx, "leases", &response)
 }
 
 // Acquire attempts to acquire a lease for the given resource and consumer.
-func (e Endpoint) Acquire(subject lease.Subject, props lease.Properties) (response transport.AcquireResponse, err error) {
-	return response, e.post("acquire", subject, props, &response)
+func (e Endpoint) Acquire(ctx context.Context, subject lease.Subject, props lease.Properties) (response transport.AcquireResponse, err error) {
+	return response, e.post(ctx, "acquire", subject, props, &response)
 }
 
 // Release attempts to remove the lease for the given resource and consumer.
-func (e Endpoint) Release(subject lease.Subject) (response transport.ReleaseResponse, err error) {
-	return response, e.post("release", subject, nil, &response)
+func (e Endpoint) Release(ctx context.Context, subject lease.Subject) (response transport.ReleaseResponse, err error) {
+	return response, e.post(ctx, "release", subject, nil, &response)
 }
 
 // prefix returns the URL prefix for the endpoint.
@@ -59,23 +52,13 @@ func (e Endpoint) prefix() string {
 	return u
 }
 
-func (e Endpoint) get(path string, response interface{}) (err error) {
-	r, err := http.Get(e.prefix() + path)
-	if err != nil {
-		return err
-	}
-	defer r.Body.Close()
-
-	if r.StatusCode != 200 {
-		return fmt.Errorf("http status: %v", r.Status)
-	}
-
-	return json.NewDecoder(r.Body).Decode(response)
-}
-
-func (e Endpoint) getWithTimeout(path string, response interface{}, timeout time.Duration) (err error) {
+func (e Endpoint) get(ctx context.Context, path string, response interface{}) (err error) {
 	if e == "" {
 		return ErrEmptyEndpoint
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	addr := e.prefix() + path
@@ -83,9 +66,6 @@ func (e Endpoint) getWithTimeout(path string, response interface{}, timeout time
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithTimeout(req.Context(), timeout)
-	defer cancel()
 
 	req = req.WithContext(ctx)
 
@@ -102,20 +82,31 @@ func (e Endpoint) getWithTimeout(path string, response interface{}, timeout time
 	return json.NewDecoder(resp.Body).Decode(response)
 }
 
-func (e Endpoint) post(path string, subject lease.Subject, props lease.Properties, response interface{}) (err error) {
+func (e Endpoint) post(ctx context.Context, path string, subject lease.Subject, props lease.Properties, response interface{}) (err error) {
 	if e == "" {
 		return ErrEmptyEndpoint
 	}
 
-	addr := e.prefix() + path
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
-	r, err := http.PostForm(addr, urlValues(subject, props))
+	addr := e.prefix() + path
+	body := strings.NewReader(urlValues(subject, props).Encode())
+	req, err := http.NewRequest("POST", addr, body)
 	if err != nil {
 		return err
 	}
-	defer r.Body.Close()
+	req = req.WithContext(ctx)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	switch r.StatusCode {
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
 	case http.StatusNoContent:
 		// TODO: Extract a retry interval from the Cache-Control header?
 		/*
@@ -124,9 +115,9 @@ func (e Endpoint) post(path string, subject lease.Subject, props lease.Propertie
 		*/
 		return ErrLeaseNotRequired
 	case http.StatusOK:
-		return json.NewDecoder(r.Body).Decode(response)
+		return json.NewDecoder(resp.Body).Decode(response)
 	default:
-		return fmt.Errorf("http status: %v", r.Status)
+		return fmt.Errorf("http status: %v", resp.Status)
 	}
 }
 

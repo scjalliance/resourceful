@@ -3,6 +3,7 @@
 package enforcer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -89,10 +90,18 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 	defer close(stopped)
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
+
+	// Interrupt policy retrieval when a shutdown has been triggered
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer wg.Done()
+		<-shutdown
+		cancel()
+	}()
 
 	// Attempt initial retrieval of policies
-	s.policies.Update()
+	s.policies.Update(ctx)
 
 	// Perform enforcement on an interval
 	go func() {
@@ -126,7 +135,7 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 			case <-shutdown:
 				return
 			case <-policyTimer.C:
-				if changed := s.policies.Update(); changed {
+				if changed := s.policies.Update(ctx); changed {
 					s.sessions.UpdatePolicies(s.policies.Policies())
 				}
 			}

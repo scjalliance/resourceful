@@ -1,6 +1,7 @@
 package guardian
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -177,8 +178,18 @@ func (lm *LeaseMaintainer) Listen(bufferSize int) (ch <-chan lease.State) {
 	return listener
 }
 
-func (lm *LeaseMaintainer) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
+func (lm *LeaseMaintainer) run(shutdown <-chan struct{}, stopped chan struct{}) {
 	defer close(stopped)
+
+	// Interrupt acquisitions when shutdown is called
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-shutdown
+		cancel()
+	}()
+
+	// Give our operations 10 seconds to complete
+	const timeout = 10 * time.Second
 
 	timer := time.NewTimer(0)
 	for {
@@ -187,17 +198,26 @@ func (lm *LeaseMaintainer) run(shutdown <-chan struct{}, stopped chan<- struct{}
 			if !timer.Stop() {
 				<-timer.C
 			}
-			lm.release()
+
+			// Shutdown has already been called, so it's important that we
+			// derive ctx from context.Background() here
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			lm.release(ctx)
+			cancel()
+
 			return
 		case <-timer.C:
-			state := lm.acquire()
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			state := lm.acquire(ctx)
+			cancel()
+
 			interval := lm.interval(state)
 			timer.Reset(interval)
 		}
 	}
 }
 
-func (lm *LeaseMaintainer) acquire() lease.State {
+func (lm *LeaseMaintainer) acquire(ctx context.Context) lease.State {
 	lm.stateMutex.Lock()
 	defer lm.stateMutex.Unlock()
 
@@ -210,7 +230,7 @@ func (lm *LeaseMaintainer) acquire() lease.State {
 		subject.Instance = lm.instance
 	}
 
-	response, err := lm.client.Acquire(subject, lm.props)
+	response, err := lm.client.Acquire(ctx, subject, lm.props)
 
 	switch err {
 	case nil:
@@ -239,13 +259,13 @@ func (lm *LeaseMaintainer) acquire() lease.State {
 	return lm.state
 }
 
-func (lm *LeaseMaintainer) release() lease.State {
+func (lm *LeaseMaintainer) release(ctx context.Context) lease.State {
 	lm.stateMutex.Lock()
 	defer lm.stateMutex.Unlock()
 
 	var err error
 	if lm.state.Acquired {
-		_, err = lm.client.Release(lm.state.Lease.Subject)
+		_, err = lm.client.Release(ctx, lm.state.Lease.Subject)
 	}
 
 	if err == nil {

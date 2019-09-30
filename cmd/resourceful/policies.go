@@ -8,12 +8,9 @@ import (
 )
 
 func collectPolicies(ctx context.Context, server string) (policy.Set, error) {
-	client, err := newClient(ctx, server)
-	if err != nil {
-		return nil, err
-	}
+	client := newClient(server)
 
-	response, err := client.Policies()
+	response, err := client.Policies(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to collect resourceful policies: %v", err)
 	}

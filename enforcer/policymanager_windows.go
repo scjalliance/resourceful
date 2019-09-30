@@ -3,8 +3,10 @@
 package enforcer
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/policy"
@@ -36,8 +38,12 @@ func (m *PolicyManager) Policies() policy.Set {
 }
 
 // Update causes the policy manager to update its policy set.
-func (m *PolicyManager) Update() (changed bool) {
-	response, err := m.client.Policies()
+func (m *PolicyManager) Update(ctx context.Context) (changed bool) {
+	const timeout = 10 * time.Second
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	response, err := m.client.Policies(ctx)
 	if err != nil {
 		m.log("Failed to retrieve policies: %v", err.Error())
 		return false

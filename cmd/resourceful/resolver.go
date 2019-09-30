@@ -10,7 +10,9 @@ import (
 	"github.com/scjalliance/resourceful/guardian"
 )
 
-func collectEndpoints(ctx context.Context) (endpoints []guardian.Endpoint, err error) {
+type resolver struct{}
+
+func (resolver) Resolve(ctx context.Context) (endpoints guardian.EndpointSet, err error) {
 	services, err := serviceresolver.DefaultResolver.Resolve(ctx, "resourceful")
 	if err != nil {
 		return nil, fmt.Errorf("failed to locate resourceful endpoints: %v", err)
