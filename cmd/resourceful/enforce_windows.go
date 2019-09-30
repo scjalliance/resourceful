@@ -60,13 +60,13 @@ func enforceInteractive(ctx context.Context, conf EnforceConfig) {
 		Args: []string{"ui"},
 	}
 
-	hostname, err := os.Hostname()
+	environment, err := buildEnvironment()
 	if err != nil {
-		fmt.Printf("Failed to query local hostname: %v\n", err)
+		fmt.Printf("Failed to collect environment: %v\n", err)
 		os.Exit(1)
 	}
 
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, hostname, conf.Passive, logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, conf.Passive, logger)
 
 	service.Start()
 	<-ctx.Done()

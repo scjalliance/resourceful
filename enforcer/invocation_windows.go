@@ -46,7 +46,7 @@ type Invocation struct {
 }
 
 // NewInvocation returns a new invocation for the given process data.
-func NewInvocation(client *guardian.Client, instance lease.Instance, process *Process, session *Session, logger Logger) *Invocation {
+func NewInvocation(client *guardian.Client, environment lease.Properties, instance lease.Instance, process *Process, session *Session, logger Logger) *Invocation {
 	data := process.Data()
 	ctx, cancel := context.WithCancel(context.Background())
 	absorption := make(chan absorptionRequest, 1)
@@ -66,7 +66,7 @@ func NewInvocation(client *guardian.Client, instance lease.Instance, process *Pr
 		absorption:  absorption,
 	}
 
-	go inv.manage(ctx, client, process, absorption, stopped)
+	go inv.manage(ctx, client, environment, process, absorption, stopped)
 
 	return inv
 }
@@ -144,7 +144,7 @@ func (inv *Invocation) UpdatePolicies(pols policy.Set) {
 	inv.pols = pols
 }
 
-func (inv *Invocation) manage(ctx context.Context, client *guardian.Client, process *Process, absorption <-chan absorptionRequest, stopped chan<- struct{}) {
+func (inv *Invocation) manage(ctx context.Context, client *guardian.Client, environment lease.Properties, process *Process, absorption <-chan absorptionRequest, stopped chan<- struct{}) {
 	// Things we need to handle here:
 	// * We're instructed by the service to stop managing the process
 	// * The process exits of its own volition (this must be distinguished from the manager killing it)
@@ -157,7 +157,7 @@ func (inv *Invocation) manage(ctx context.Context, client *guardian.Client, proc
 	defer close(stopped)
 
 	retry := time.Second * 5
-	maintainer := guardian.NewLeaseMaintainer(client, inv.instance, Properties(process.Data(), inv.instance.Host), retry)
+	maintainer := guardian.NewLeaseMaintainer(client, inv.instance, Properties(process.Data(), environment), retry)
 	maintainer.Start()
 	states := maintainer.Listen(1)
 

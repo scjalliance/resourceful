@@ -90,10 +90,10 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 	}
 	checkpoint = sendProgress(changes, checkpoint)
 
-	// Determine a hostname
-	hostname, err := os.Hostname()
+	// Examine the environment
+	environment, err := buildEnvironment()
 	if err != nil {
-		h.log("Failed to query local hostname: %v", err)
+		h.log("Failed to collect environment: %v\n", err)
 		return false, 1
 	}
 	checkpoint = sendProgress(changes, checkpoint)
@@ -112,7 +112,7 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 	checkpoint = sendProgress(changes, checkpoint)
 
 	// Prepare the service
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, hostname, h.Conf.Passive, h.Logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, h.Conf.Passive, h.Logger)
 	checkpoint = sendProgress(changes, checkpoint)
 
 	// Start the service

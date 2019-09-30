@@ -8,15 +8,17 @@ import (
 )
 
 // Properties returns the lease properties for p.
-func Properties(p winproc.Process, host string) lease.Properties {
-	return lease.Properties{
-		"program.name":     p.Name,
-		"program.path":     p.Path,
-		"process.id":       p.ID.String(),
-		"process.creation": p.Times.Creation.String(),
-		"host.name":        host,
-		"user.id":          p.User.SID,
-		"user.username":    p.User.Account,
-		"user.name":        p.User.String(),
+func Properties(p winproc.Process, environment lease.Properties) lease.Properties {
+	props := make(lease.Properties, len(environment)+7)
+	for k, v := range environment {
+		props[k] = v
 	}
+	props["program.name"] = p.Name
+	props["program.path"] = p.Path
+	props["process.id"] = p.ID.String()
+	props["process.creation"] = p.Times.Creation.String()
+	props["user.id"] = p.User.SID
+	props["user.username"] = p.User.Account
+	props["user.name"] = p.User.String()
+	return props
 }

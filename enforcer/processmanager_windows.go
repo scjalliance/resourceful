@@ -14,11 +14,11 @@ import (
 
 // ProcessManager enforces a set of policies on local processes.
 type ProcessManager struct {
-	client   *guardian.Client
-	hostname string
-	passive  bool // Don't kill processes if true
-	sessions *SessionManager
-	logger   Logger
+	client      *guardian.Client
+	environment lease.Properties
+	passive     bool // Don't kill processes if true
+	sessions    *SessionManager
+	logger      Logger
 
 	mutex       sync.RWMutex
 	managed     map[UniqueID]lease.Instance
@@ -27,10 +27,10 @@ type ProcessManager struct {
 }
 
 // NewProcessManager returns a new process manager that is ready for use.
-func NewProcessManager(client *guardian.Client, hostname string, passive bool, sessions *SessionManager, logger Logger) *ProcessManager {
+func NewProcessManager(client *guardian.Client, environment lease.Properties, passive bool, sessions *SessionManager, logger Logger) *ProcessManager {
 	return &ProcessManager{
 		client:      client,
-		hostname:    hostname,
+		environment: environment,
 		passive:     passive,
 		sessions:    sessions,
 		logger:      logger,
@@ -42,7 +42,7 @@ func NewProcessManager(client *guardian.Client, hostname string, passive bool, s
 
 // Enforce causes the process manager to enforce the given policy set.
 func (m *ProcessManager) Enforce(policies policy.Set) error {
-	procs, err := Scan(policies)
+	procs, err := Scan(policies, m.environment)
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 		}
 
 		// If it matches a policy add it to the pending slice
-		matches := policies.Match(Properties(proc, m.hostname))
+		matches := policies.Match(Properties(proc, m.environment))
 		if len(matches) > 0 {
 			pending = append(pending, proc)
 		}
@@ -176,10 +176,10 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 		*/
 
 		// Create a new invocation
-		instance := Instance(m.hostname, proc, NewInstanceID(proc))
+		instance := Instance(m.environment["host.name"], proc, NewInstanceID(proc))
 		m.debug("Started management of invocation %s", instance.ID)
 		m.debug("Started management of process %s", id)
-		invocation := NewInvocation(m.client, instance, process, m.sessions.Session(SessionID(proc.SessionID)), m.logger)
+		invocation := NewInvocation(m.client, m.environment, instance, process, m.sessions.Session(SessionID(proc.SessionID)), m.logger)
 		m.invocations[instance] = invocation
 		m.managed[id] = instance
 	}

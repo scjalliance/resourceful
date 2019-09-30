@@ -5,7 +5,6 @@ package enforcer
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/gentlemanautomaton/winproc"
@@ -17,7 +16,7 @@ import (
 // the given criteria.
 //
 // If no valid criteria are present a nil filter will be returned.
-func Filter(criteria policy.Criteria) (filter winproc.Filter, err error) {
+func Filter(criteria policy.Criteria, environment lease.Properties) (filter winproc.Filter, err error) {
 	var filters []propertyFilter
 	for _, c := range criteria {
 		f, err := makeCriterionFilter(c)
@@ -32,13 +31,8 @@ func Filter(criteria policy.Criteria) (filter winproc.Filter, err error) {
 		return nil, nil
 	}
 
-	host, err := os.Hostname()
-	if err != nil {
-		return nil, fmt.Errorf("unable to query hostname: %v", err)
-	}
-
 	return func(p winproc.Process) bool {
-		props := Properties(p, host)
+		props := Properties(p, environment)
 		for _, filter := range filters {
 			if !filter(props) {
 				return false

@@ -4,6 +4,7 @@ package enforcer
 
 import (
 	"github.com/gentlemanautomaton/winproc"
+	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/policy"
 )
 
@@ -11,7 +12,7 @@ import (
 // might be applicable.
 //
 // TODO: Accept an environment to be used in policy evaluation?
-func Scan(policies policy.Set) ([]ProcessData, error) {
+func Scan(policies policy.Set, environment lease.Properties) ([]ProcessData, error) {
 	// Detect the current hostname
 	/*
 		hostname, err := os.Hostname()
@@ -24,7 +25,7 @@ func Scan(policies policy.Set) ([]ProcessData, error) {
 	// process filters
 	var filters []winproc.Filter
 	for _, pol := range policies {
-		filter, err := Filter(pol.Criteria)
+		filter, err := Filter(pol.Criteria, environment)
 		if err != nil {
 			// Skip policiies with criteria that we couldn't understand
 			// TODO: Log the policy error somewhere?

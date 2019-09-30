@@ -16,9 +16,9 @@ import (
 func list(ctx context.Context, conf ListConfig) {
 	prepareConsole(false)
 
-	host, err := os.Hostname()
+	environment, err := buildEnvironment()
 	if err != nil {
-		fmt.Printf("Failed to query local hostname: %v\n", err)
+		fmt.Printf("Failed to collect environment: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -28,7 +28,7 @@ func list(ctx context.Context, conf ListConfig) {
 		os.Exit(1)
 	}
 
-	procs, err := enforcer.Scan(policies)
+	procs, err := enforcer.Scan(policies, environment)
 	if err != nil {
 		fmt.Printf("Failed to collect processes: %v\n", err)
 		os.Exit(1)
@@ -41,8 +41,8 @@ func list(ctx context.Context, conf ListConfig) {
 
 	fmt.Printf("Processes:\n")
 	for _, process := range procs {
-		instance := enforcer.Instance(host, process, enforcer.NewInstanceID(process))
-		props := enforcer.Properties(process, host)
+		instance := enforcer.Instance(environment["host.name"], process, enforcer.NewInstanceID(process))
+		props := enforcer.Properties(process, environment)
 		if matches := policies.Match(props); len(matches) > 0 {
 			fmt.Printf("%s\n", process)
 			fmt.Printf("  Resource: %s\n", matches.Resource())

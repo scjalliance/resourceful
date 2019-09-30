@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/guardian"
+	"github.com/scjalliance/resourceful/lease"
 )
 
 // Service is a resourceful policy enforcement service. It watches the local
@@ -30,11 +31,11 @@ type Service struct {
 }
 
 // New returns a new policy enforcement service with the given client.
-func New(client *guardian.Client, enforcementInterval, policyInterval time.Duration, ui Command, hostname string, passive bool, logger Logger) *Service {
+func New(client *guardian.Client, enforcementInterval, policyInterval time.Duration, ui Command, environment lease.Properties, passive bool, logger Logger) *Service {
 	var (
 		policies = NewPolicyManager(client, logger)
 		sessions = NewSessionManager(ui, logger)
-		procs    = NewProcessManager(client, hostname, passive, sessions, logger)
+		procs    = NewProcessManager(client, environment, passive, sessions, logger)
 	)
 	return &Service{
 		client:              client,
