@@ -100,8 +100,50 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 		cancel()
 	}()
 
-	// Attempt initial retrieval of policies
-	s.policies.Update(ctx)
+	// Update policies on an interval
+	{
+		// Retry every 5 seconds if we failed
+		const startup = 5 * time.Second
+
+		// Try to pull policies before we begin enforcement
+		_, started := s.policies.Update(ctx)
+
+		go func() {
+			defer wg.Done()
+			defer s.debug("Stopped policy manager")
+
+			// Start a timer with an appropriate interval
+			var t *time.Timer
+			if started {
+				t = time.NewTimer(s.policyInterval)
+			} else {
+				t = time.NewTimer(startup)
+			}
+			defer func() {
+				if !t.Stop() {
+					<-t.C
+				}
+			}()
+
+			for {
+				select {
+				case <-shutdown:
+					return
+				case <-t.C:
+					changed, ok := s.policies.Update(ctx)
+					if !ok && !started {
+						t.Reset(startup) // Continue trying every 5 seconds
+					} else {
+						t.Reset(s.policyInterval)
+					}
+
+					if changed {
+						s.sessions.UpdatePolicies(s.policies.Policies())
+					}
+				}
+			}
+		}()
+	}
 
 	// Perform enforcement on an interval
 	go func() {
@@ -117,26 +159,6 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 			case <-enforceTimer.C:
 				if err := s.procs.Enforce(s.policies.Policies()); err != nil {
 					s.log("Enforcement failed: %s", err)
-				}
-			}
-		}
-	}()
-
-	// Update policies on an interval
-	go func() {
-		defer wg.Done()
-		defer s.debug("Stopped policy manager")
-
-		policyTimer := time.NewTicker(s.policyInterval)
-		defer policyTimer.Stop()
-
-		for {
-			select {
-			case <-shutdown:
-				return
-			case <-policyTimer.C:
-				if changed := s.policies.Update(ctx); changed {
-					s.sessions.UpdatePolicies(s.policies.Policies())
 				}
 			}
 		}

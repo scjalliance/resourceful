@@ -38,7 +38,7 @@ func (m *PolicyManager) Policies() policy.Set {
 }
 
 // Update causes the policy manager to update its policy set.
-func (m *PolicyManager) Update(ctx context.Context) (changed bool) {
+func (m *PolicyManager) Update(ctx context.Context) (changed, ok bool) {
 	const timeout = 10 * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -46,7 +46,7 @@ func (m *PolicyManager) Update(ctx context.Context) (changed bool) {
 	response, err := m.client.Policies(ctx)
 	if err != nil {
 		m.log("Failed to retrieve policies: %v", err.Error())
-		return false
+		return false, false
 	}
 
 	updated := response.Policies
@@ -58,7 +58,7 @@ func (m *PolicyManager) Update(ctx context.Context) (changed bool) {
 
 	additions, deletions := previous.Diff(updated)
 	if len(additions) == 0 && len(deletions) == 0 {
-		return false
+		return false, true
 	}
 
 	for _, pol := range additions {
@@ -68,7 +68,7 @@ func (m *PolicyManager) Update(ctx context.Context) (changed bool) {
 		m.log("POL: REM %s: %s", pol.Hash().String(), pol.String())
 	}
 
-	return true
+	return true, true
 }
 
 func (m *PolicyManager) log(format string, v ...interface{}) {
