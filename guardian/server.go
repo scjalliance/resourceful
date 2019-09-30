@@ -108,6 +108,9 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+
 	fmt.Fprintf(w, string(data))
 }
 
@@ -128,6 +131,8 @@ func (s *Server) policiesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to marshal policies", http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
 
 	fmt.Fprintf(w, string(data))
 }
@@ -180,6 +185,9 @@ func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to marshal health response", http.StatusBadRequest)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+
 	fmt.Fprintf(w, string(data))
 }
 
@@ -242,6 +250,8 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to marshal response", http.StatusBadRequest)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
 
 	fmt.Fprintf(w, string(data))
 }
@@ -394,6 +404,8 @@ func (s *Server) releaseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to marshal response", http.StatusBadRequest)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
 
 	fmt.Fprintf(w, string(data))
 }

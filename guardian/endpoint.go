@@ -68,6 +68,7 @@ func (e Endpoint) get(ctx context.Context, path string, response interface{}) (e
 	}
 
 	req = req.WithContext(ctx)
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -99,6 +100,7 @@ func (e Endpoint) post(ctx context.Context, path string, subject lease.Subject, 
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
