@@ -43,7 +43,7 @@ func main() {
 	// we're being invoked as a service, but it could also mean we're being
 	// run via "psexec -s -i". We check our own "-i" flag to override
 	// invocation via the service framework.
-	if !interactive && !enforceConf.Interactive {
+	if !interactive && !enforceConf.Interactive && command == enforceCmd.FullCommand() {
 		enforceService(*enforceConf, err)
 		return
 	}
