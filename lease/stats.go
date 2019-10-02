@@ -63,6 +63,27 @@ func (s *Stats) Consumed(strat strategy.Strategy) uint {
 	}
 }
 
+var emptyUserMap = map[string]uint{}
+
+// Users returns a map of users and the number of resources consumed
+// by each according to the provided resource counting strategy.
+func (s *Stats) Users(strat strategy.Strategy) map[string]uint {
+	switch strat {
+	case strategy.Instance:
+		if s.Instance.Users == nil {
+			return emptyUserMap
+		}
+		return s.Instance.Users
+	case strategy.Consumer:
+		if s.Consumer.Users == nil {
+			return emptyUserMap
+		}
+		return s.Consumer.Users
+	default:
+		panic("unknown strategy")
+	}
+}
+
 // Tally is a set of resource statistics for a particular resource counting
 // strategy.
 type Tally struct {
@@ -70,14 +91,19 @@ type Tally struct {
 	Released uint
 	Queued   uint
 	Consumed uint
+	Users    map[string]uint
 }
 
 // Add will increase the tally for the specified status.
-func (t *Tally) Add(status Status) {
+func (t *Tally) Add(user string, status Status) {
 	switch status {
 	case Active:
 		t.Active++
 		t.Consumed++
+		if t.Users == nil {
+			t.Users = make(map[string]uint)
+		}
+		t.Users[user]++
 	case Released:
 		t.Released++
 		t.Consumed++

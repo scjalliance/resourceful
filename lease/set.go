@@ -5,11 +5,24 @@ import "time"
 // Set is a set of leases.
 type Set []Lease
 
+// TODO: Create a Resource() method that filters by resource, then remove
+//       the resource argument from HostUser and Instance.
+
 // HostUser returns the set of leases matching the requested resource, host
 // and user.
 func (s Set) HostUser(resource, host, user string) (matched Set) {
 	for i := range s {
 		if s[i].MatchHostUser(resource, host, user) {
+			matched = append(matched, Clone(s[i]))
+		}
+	}
+	return
+}
+
+// User returns the set of leases for the given user.
+func (s Set) User(user string) (matched Set) {
+	for i := range s {
+		if s[i].Instance.User == user {
 			matched = append(matched, Clone(s[i]))
 		}
 	}
@@ -72,7 +85,7 @@ func (s Set) Stats() (stats Stats) {
 
 	for _, ls := range s {
 		// The instance strategy is a simple tally of each kind of lease.
-		stats.Instance.Add(ls.Status)
+		stats.Instance.Add(ls.Instance.User, ls.Status)
 
 		// The consumer strategy is more complicated; it requires that we only count
 		// each consumer once, despite how many instances the consumer may have.
@@ -83,7 +96,7 @@ func (s Set) Stats() (stats Stats) {
 		c := ls.HostUser()
 		if _, seen := consumers[c]; !seen {
 			consumers[c] = struct{}{}
-			stats.Consumer.Add(ls.Status)
+			stats.Consumer.Add(ls.Instance.User, ls.Status)
 		}
 	}
 	return
