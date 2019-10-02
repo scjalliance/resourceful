@@ -163,11 +163,20 @@ func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 	for _, resource := range resources {
 		revision, resourceLeases, err := s.LeaseProvider.LeaseView(resource)
 		if err != nil {
-			printf(s.Logger, "Lease retrieval failed: %v\n", err)
+			printf(s.Logger, "Lease retrieval failed for \"%s\": %v\n", resource, err)
+			continue
 		}
+
+		// Purge expired leases
 		now := time.Now()
 		tx := lease.NewTx(resource, revision, resourceLeases)
 		leaseutil.Refresh(tx, now)
+
+		// Make a best effort to commit any changes
+		if !tx.Empty() {
+			s.LeaseProvider.LeaseCommit(tx)
+		}
+
 		txLeases := tx.Leases()
 		if len(leases) == 0 {
 			leases = txLeases
