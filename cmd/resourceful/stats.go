@@ -26,7 +26,19 @@ type ResourceStats struct {
 	Active   uint
 	Released uint
 	Queued   uint
-	Users    map[string]uint
+	Users    UserStatsMap
+}
+
+// UserStatsMap holds resource statistics for a user.
+type UserStatsMap map[string]uint
+
+// Contains returns true if m contains user.
+func (m UserStatsMap) Contains(user string) bool {
+	if m == nil {
+		return false
+	}
+	_, found := m[user]
+	return found
 }
 
 // StatManager manages resources statistics.
@@ -65,7 +77,7 @@ func (m *StatManager) CollectAndSend(polProv policy.Provider, leaseProv lease.Pr
 		if current, exists := current[resource]; !exists {
 			removal := ResourceStats{
 				Limit: last.Limit,
-				Users: make(map[string]uint, len(last.Users)),
+				Users: make(UserStatsMap, len(last.Users)),
 			}
 			for user := range last.Users {
 				removal.Users[user] = 0
@@ -91,13 +103,12 @@ func (m *StatManager) CollectAndSend(polProv policy.Provider, leaseProv lease.Pr
 	// Any users that were previously absent need to have a zero value sent
 	// prior to the current value
 	for resource, current := range current {
-		if last, exists := m.last[resource]; exists {
-			for user := range current.Users {
-				if _, found := last.Users[user]; found {
-					continue // Not previously absent
-				}
-				m.recipient.SendUser(resource, user, 0, current.Time.Add(-time.Minute))
+		last, exists := m.last[resource]
+		for user := range current.Users {
+			if exists && last.Users.Contains(user) {
+				continue // Not previously absent
 			}
+			m.recipient.SendUser(resource, user, 0, current.Time.Add(-time.Minute))
 		}
 	}
 
@@ -113,7 +124,7 @@ func (m *StatManager) CollectAndSend(polProv policy.Provider, leaseProv lease.Pr
 	return nil
 }
 
-func (m *StatManager) collect(polProv policy.Provider, leaseProv lease.Provider, refresh bool) (stats map[string]ResourceStats, err error) {
+func (m *StatManager) collect(polProv policy.Provider, leaseProv lease.Provider, refresh bool) (stats ResourceStatsMap, err error) {
 	policies, err := polProv.Policies()
 	if err != nil {
 		return nil, err
@@ -124,7 +135,7 @@ func (m *StatManager) collect(polProv policy.Provider, leaseProv lease.Provider,
 		return nil, err
 	}
 
-	stats = make(map[string]ResourceStats, len(resources))
+	stats = make(ResourceStatsMap, len(resources))
 
 	for _, resource := range resources {
 		// Collect policy settings for the resource
@@ -152,7 +163,7 @@ func (m *StatManager) collect(polProv policy.Provider, leaseProv lease.Provider,
 		data := leases.Stats()
 
 		// Translate users into user account names
-		users := make(map[string]uint)
+		users := make(UserStatsMap)
 		for user, count := range data.Users(strat) {
 			if props := leases.User(user).Property("user.account"); len(props) > 0 {
 				name := props[0]
