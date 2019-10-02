@@ -18,7 +18,7 @@ func Properties(p winproc.Process, environment lease.Properties) lease.Propertie
 	props["process.id"] = p.ID.String()
 	props["process.creation"] = p.Times.Creation.String()
 	props["user.id"] = p.User.SID
-	props["user.username"] = p.User.Account
-	props["user.name"] = p.User.String()
+	props["user.account"] = p.User.Account
+	props["user.domain"] = p.User.Domain
 	return props
 }

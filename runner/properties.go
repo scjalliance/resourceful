@@ -4,6 +4,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strings"
 
 	"github.com/scjalliance/resourceful/lease"
 )
@@ -21,12 +22,19 @@ func Properties(c Config, host string, u *user.User) lease.Properties {
 		program = filepath.Base(path)
 	}
 
-	return lease.Properties{
-		"program.name":  program,
-		"program.path":  path,
-		"host.name":     host,
-		"user.id":       u.Uid,
-		"user.username": u.Username,
-		"user.name":     u.Name,
+	props := lease.Properties{
+		"program.name": program,
+		"program.path": path,
+		"host.name":    host,
+		"user.id":      u.Uid,
 	}
+
+	if parts := strings.SplitN(u.Username, `\`, 2); len(parts) == 2 {
+		props["user.domain"] = parts[0]
+		props["user.account"] = parts[1]
+	} else {
+		props["user.account"] = u.Username
+	}
+
+	return props
 }
