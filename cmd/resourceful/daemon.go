@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gentlemanautomaton/signaler"
@@ -32,11 +34,13 @@ func GuardianCommand(app *kingpin.Application) (*kingpin.CmdClause, *GuardianCon
 
 // GuardianConfig holds configuration for the guardian command.
 type GuardianConfig struct {
-	LeaseStorage string
-	BoltPath     string
-	PolicyPath   string
-	TxPath       string
-	Schedule     string
+	LeaseStorage  string
+	BoltPath      string
+	PolicyPath    string
+	TxPath        string
+	Schedule      string
+	StatHatKey    string
+	StatsInterval time.Duration
 }
 
 // Bind binds the guardian configuration to the command.
@@ -46,12 +50,15 @@ func (conf *GuardianConfig) Bind(cmd *kingpin.CmdClause) {
 	cmd.Flag("policypath", "policy directory path").Envar("POLICY_PATH").StringVar(&conf.PolicyPath)
 	cmd.Flag("txlog", "transaction log file path").Envar("TRANSACTION_LOG").Default(defaultTransactionPath).StringVar(&conf.TxPath)
 	cmd.Flag("cpschedule", "transaction checkpoint schedule").Envar("CHECKPOINT_SCHEDULE").StringVar(&conf.Schedule)
+	cmd.Flag("stathatkey", "optional StatHat key for recording statistics").Envar("STATHAT_KEY").StringVar(&conf.StatHatKey)
+	cmd.Flag("stats", "optional interval for recording statistics").Envar("STATS_INTERVAL").Default(defaultStatsInterval).DurationVar(&conf.StatsInterval)
 }
 
 const (
 	defaultLeaseStorage    = "memory"
 	defaultBoltPath        = "resourceful.boltdb"
 	defaultTransactionPath = "resourceful.tx.log"
+	defaultStatsInterval   = "1m"
 )
 
 func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
@@ -65,6 +72,12 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 
 	// Cancel the context after the announcement
 	ctx := announcement.Context()
+
+	const minStatsInterval = 5 * time.Second
+	if conf.StatsInterval < minStatsInterval {
+		// Don't spam the stats recipient
+		conf.StatsInterval = minStatsInterval
+	}
 
 	if conf.PolicyPath == "" {
 		// Use the working directory as the default source for policy files
@@ -145,12 +158,57 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 		logger.Printf("%d policies loaded", count)
 	}
 
-	err = guardian.Run(ctx, cfg)
+	if recipient := createStatRecipient(conf); recipient != nil {
+		stats := NewStatManager(recipient)
+		if err := stats.Init(policyProvider, leaseProvider); err != nil {
+			logger.Printf("Failed to collect lease statistics: %v", err)
+			return err
+		}
+
+		statsCtx, statsCancel := context.WithCancel(context.Background())
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			t := time.NewTicker(conf.StatsInterval)
+			defer t.Stop()
+
+			for {
+				select {
+				case <-statsCtx.Done():
+					// Attempt to send a final set of statistics after the
+					// the server has stopped
+					stats.CollectAndSend(policyProvider, leaseProvider)
+					return
+				case <-t.C:
+					if err := stats.CollectAndSend(policyProvider, leaseProvider); err != nil {
+						logger.Printf("Failed to collect and send lease statistics: %v", err)
+					}
+				}
+			}
+		}()
+
+		err = guardian.Run(ctx, cfg)
+
+		statsCancel()
+		wg.Wait()
+	} else {
+		err = guardian.Run(ctx, cfg)
+	}
 
 	if err != http.ErrServerClosed {
 		logger.Printf("Stopped resourceful guardian daemon due to error: %v", err)
 	}
 	return
+}
+
+func createStatRecipient(conf GuardianConfig) StatRecipient {
+	if conf.StatHatKey != "" {
+		return NewStatHatRecipient("resourceful", conf.StatHatKey)
+	}
+	return nil
 }
 
 func createTransactionLog(path string) (file *os.File, err error) {
