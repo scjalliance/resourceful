@@ -50,6 +50,16 @@ func (s Set) Diff(next Set) (additions, deletions Set) {
 	return
 }
 
+// MatchResource returns the subset of policies which apply to resource.
+func (s Set) MatchResource(resource string) (matches Set) {
+	for p := range s {
+		if s[p].Resource == resource {
+			matches = append(matches, s[p])
+		}
+	}
+	return
+}
+
 // Match returns the subset of policies which match the given properties.
 func (s Set) Match(props lease.Properties) (matches Set) {
 	for p := range s {
