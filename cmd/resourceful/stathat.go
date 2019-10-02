@@ -21,8 +21,8 @@ func NewStatHatRecipient(statNamePrefix string, ezkey string) StatHatRecipient {
 	}
 }
 
-// Send sends the given resource statistics to StatHat.
-func (r StatHatRecipient) Send(resource string, stats ResourceStats) error {
+// SendResource sends the given resource statistics to StatHat.
+func (r StatHatRecipient) SendResource(resource string, stats ResourceStats) error {
 	if err := r.send(resource, "consumed", stats.Consumed, stats.Time); err != nil {
 		return err
 	}
@@ -41,10 +41,15 @@ func (r StatHatRecipient) Send(resource string, stats ResourceStats) error {
 
 	for user, count := range stats.Users {
 		if user != "" {
-			r.send(resource, "user "+user, count, stats.Time)
+			r.SendUser(resource, user, count, stats.Time)
 		}
 	}
 	return nil
+}
+
+// SendUser sends individual user statistics to StatHat.
+func (r StatHatRecipient) SendUser(resource, user string, count uint, t time.Time) error {
+	return r.send(resource, "user "+user, count, t)
 }
 
 func (r StatHatRecipient) send(resource, name string, value uint, t time.Time) error {

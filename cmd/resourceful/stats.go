@@ -11,7 +11,8 @@ import (
 
 // A StatRecipient is capable of receiving resource statistics.
 type StatRecipient interface {
-	Send(resource string, stats ResourceStats) error
+	SendResource(resource string, stats ResourceStats) error
+	SendUser(resource, user string, count uint, t time.Time) error
 }
 
 // ResourceStatsMap holds resource statistics for a set of resources.
@@ -52,6 +53,7 @@ func (m *StatManager) Init(polProv policy.Provider, leaseProv lease.Provider) er
 // CollectAndSend collects statistics from the given providers and sends them
 // to the manager's stat recipient.
 func (m *StatManager) CollectAndSend(polProv policy.Provider, leaseProv lease.Provider) error {
+	// Collect the current values
 	current, err := m.collect(polProv, leaseProv, true)
 	if err != nil {
 		return err
@@ -68,7 +70,7 @@ func (m *StatManager) CollectAndSend(polProv policy.Provider, leaseProv lease.Pr
 			for user := range last.Users {
 				removal.Users[user] = 0
 			}
-			if err := m.recipient.Send(resource, removal); err != nil {
+			if err := m.recipient.SendResource(resource, removal); err != nil {
 				return fmt.Errorf("failed to remove expired stats for %s: %v", resource, err)
 			}
 		} else {
@@ -86,8 +88,22 @@ func (m *StatManager) CollectAndSend(polProv policy.Provider, leaseProv lease.Pr
 		}
 	}
 
+	// Any users that were previously absent need to have a zero value sent
+	// prior to the current value
+	for resource, current := range current {
+		if last, exists := m.last[resource]; exists {
+			for user := range current.Users {
+				if _, found := last.Users[user]; found {
+					continue // Not previously absent
+				}
+				m.recipient.SendUser(resource, user, 0, current.Time.Add(-time.Minute))
+			}
+		}
+	}
+
+	// Send the current values
 	for resource, stats := range current {
-		if err := m.recipient.Send(resource, stats); err != nil {
+		if err := m.recipient.SendResource(resource, stats); err != nil {
 			return fmt.Errorf("failed to send stats for %s: %v", resource, err)
 		}
 	}
