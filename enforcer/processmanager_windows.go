@@ -99,13 +99,12 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 	for id, instance := range m.managed {
 		if _, exists := scanned[id]; !exists {
 			if inv := m.invocations[instance]; inv != nil {
-				// TODO: Ask the invocation whether it's still alive. Check
-				// if it has stale policies. Remove if necessary.
-				if inv.Done() {
-					inv.Stop()
-					delete(m.invocations, instance)
-					m.debug("Stopped management of invocation %s", instance.ID)
-				}
+				// The invocation should have stopped by now, but sometimes
+				// the process handle doesn't get signaled if the program
+				// crashes, so we tell it to stop just in case.
+				inv.Stop()
+				delete(m.invocations, instance)
+				m.debug("Stopped management of invocation %s", instance.ID)
 			}
 			delete(m.managed, id)
 			m.debug("Stopped management of process %s", id)
