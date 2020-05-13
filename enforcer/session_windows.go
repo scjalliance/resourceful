@@ -5,7 +5,6 @@ package enforcer
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -16,6 +15,7 @@ import (
 	"github.com/gentlemanautomaton/winsession"
 	"github.com/gentlemanautomaton/winsession/wtsapi"
 	"github.com/scjalliance/resourceful/enforcerui"
+	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/policy"
 )
 
@@ -65,9 +65,19 @@ func (s *Session) Send(msg enforcerui.Message) (ok bool) {
 // SendPolicies attempts to send a policy change message to the session.
 func (s *Session) SendPolicies(pols policy.Set) (ok bool) {
 	return s.Send(enforcerui.Message{
-		Type: enforcerui.TypePolicyChange,
-		PolicyChange: enforcerui.PolicyChange{
+		Type: enforcerui.TypePolicyUpdate,
+		Policies: enforcerui.PolicyUpdate{
 			New: pols,
+		},
+	})
+}
+
+// SendLeases attempts to send a lease change message to the session.
+func (s *Session) SendLeases(leases lease.Set) (ok bool) {
+	return s.Send(enforcerui.Message{
+		Type: enforcerui.TypeLeaseUpdate,
+		Leases: enforcerui.LeaseUpdate{
+			New: leases,
 		},
 	})
 }
@@ -175,7 +185,7 @@ func (s *Session) Connect() error {
 	// Send messages to the process
 	go func() {
 		defer writer.Close()
-		enc := json.NewEncoder(writer)
+		writer := enforcerui.NewWriter(writer)
 		for {
 			select {
 			case <-ctx.Done():
@@ -187,7 +197,7 @@ func (s *Session) Connect() error {
 					return
 				}
 				s.debug("Send: %s", msg.Type)
-				enc.Encode(msg)
+				writer.Write(msg)
 			}
 
 		}

@@ -9,22 +9,32 @@ import (
 
 // Message Types
 const (
-	TypePolicyChange       = "policy.change"
+	TypePolicyUpdate       = "policy.update"
+	TypeLeaseUpdate        = "lease.update"
+	TypeEnforcementUpdate  = "enforcement.update"
 	TypeProcessTermination = "process.termination"
-	TypeLicenseLost        = "license.lost"
+	//TypeLicenseLost        = "license.lost"
 )
 
 // Message is a UI message.
 type Message struct {
-	Type         string       `json:"type"`
-	PolicyChange PolicyChange `json:"policyChange,omitempty"`
-	ProcTerm     ProcTerm     `json:"procTerm,omitempty"`
+	Type        string            `json:"type"`
+	Policies    PolicyUpdate      `json:"policy,omitempty"`
+	Leases      LeaseUpdate       `json:"leases,omitempty"`
+	Enforcement EnforcementUpdate `json:"enforcement,omitempty"`
+	ProcTerm    ProcTerm          `json:"procTerm,omitempty"`
 }
 
-// PolicyChange stores a policy modifcation.
-type PolicyChange struct {
+// PolicyUpdate stores a policy set update.
+type PolicyUpdate struct {
 	Old policy.Set `json:"old,omitempty"`
 	New policy.Set `json:"new,omitempty"`
+}
+
+// LeaseUpdate stores a lease set update.
+type LeaseUpdate struct {
+	Old lease.Set `json:"old,omitempty"`
+	New lease.Set `json:"new,omitempty"`
 }
 
 // EnforcementUpdate reports on the current state of enforcement.

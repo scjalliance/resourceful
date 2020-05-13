@@ -65,7 +65,9 @@ func main() {
 
 	switch command {
 	case uiCmd.FullCommand():
-		ui(shutdown.Context())
+		if exit := ui(shutdown.Context()); exit != 0 {
+			os.Exit(exit)
+		}
 	case runCmd.FullCommand():
 		run(shutdown.Context(), *runConf)
 	case listCmd.FullCommand():

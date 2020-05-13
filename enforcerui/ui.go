@@ -3,7 +3,8 @@
 package enforcerui
 
 import (
-	"context"
+	"fmt"
+	"sync"
 
 	"github.com/lxn/walk"
 )
@@ -14,47 +15,67 @@ type UI struct {
 	icon    *walk.Icon
 	name    string
 	version string
-	msgs    chan Message
+
+	mutex sync.Mutex
+	state State
+	tray  *Tray
 }
 
-// New returns a new UI instance.
-func New(icon *walk.Icon, name, version string) *UI {
+// New returns creates and starts a new UI instance.
+//
+// It is the caller's responsiblity to call Close when finished with the UI.
+func New(icon *walk.Icon, name, version string) (*UI, error) {
+	tray := NewTray(icon, name, version)
+	if err := tray.Start(); err != nil {
+		return nil, err
+	}
+
 	return &UI{
 		icon:    icon,
 		name:    name,
 		version: version,
-		msgs:    make(chan Message, 128),
-	}
+		tray:    tray,
+	}, nil
 }
 
-// Run executes the user interface until ctx is cancelled.
-func (ui *UI) Run(ctx context.Context) error {
-	t := NewTray(ui.icon, ui.name, ui.version)
-	if err := t.Start(); err != nil {
-		return err
-	}
-	defer t.Stop()
+// Close stops the user interface and releases any resources consumed by it.
+func (ui *UI) Close() error {
+	ui.mutex.Lock()
+	defer ui.mutex.Unlock()
 
-	for {
-		select {
-		case msg := <-ui.msgs:
-			//fmt.Printf("Message Received: %#v\n", msg)
-			switch msg.Type {
-			case TypePolicyChange:
-				t.Handle(msg)
-				//additions, deletions := msg.PolicyChange.Old.Diff
-			case TypeProcessTermination:
-				t.Handle(msg)
-			}
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	if ui.tray == nil {
+		return nil
 	}
+
+	err := ui.tray.Stop()
+	ui.tray = nil
+	return err
 }
 
 // Handle instructs the user interface to take action on the given message.
 //
-// If the UI is not running or is overloaded this call can block.
+// If the UI is not running the message will be dropped. If the UI is
+// overloaded this call can block until the UI makes room in its queue.
 func (ui *UI) Handle(msg Message) {
-	ui.msgs <- msg
+	ui.mutex.Lock()
+	defer ui.mutex.Unlock()
+
+	if ui.tray == nil {
+		return
+	}
+
+	//fmt.Printf("Message Received: %#v\n", msg)
+	switch msg.Type {
+	case TypePolicyUpdate:
+		ui.state.Policies = msg.Policies.New
+		ui.tray.Update(ui.state)
+	case TypeLeaseUpdate:
+		ui.state.Leases = msg.Leases.New
+		ui.tray.Update(ui.state)
+	case TypeProcessTermination:
+		ui.tray.Notify(Notice{
+			Title:   "No licenses available",
+			Message: fmt.Sprintf("The %s process has been terminated because no licenses are available.", msg.ProcTerm.Name),
+		})
+	}
 }

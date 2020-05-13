@@ -20,7 +20,7 @@ type trayData struct {
 	Err        error
 }
 
-// Tray runs the enforcer's tray.
+// Tray is an enforcer system tray agent.
 type Tray struct {
 	icon    *walk.Icon
 	name    string
@@ -29,7 +29,8 @@ type Tray struct {
 	mutex   sync.RWMutex
 	stop    context.CancelFunc
 	stopped <-chan struct{}
-	msgs    chan Message
+	states  chan<- State
+	notices chan<- Notice
 }
 
 // NewTray returns a new system tray instance.
@@ -38,7 +39,6 @@ func NewTray(icon *walk.Icon, name, version string) *Tray {
 		icon:    icon,
 		name:    name,
 		version: version,
-		msgs:    make(chan Message, 128),
 	}
 }
 
@@ -51,7 +51,7 @@ func (t *Tray) Start() error {
 		return errors.New("the tray instance is already running")
 	}
 
-	// Create the tray objects and start the tray
+	// Create the tray objects and start the tray on a dedicated thread
 	startup := make(chan trayData)
 	go t.run(startup)
 
@@ -65,16 +65,24 @@ func (t *Tray) Start() error {
 	ctx, stop := context.WithCancel(context.Background())
 	stopped := make(chan struct{})
 
-	// Start a manager that updates the tray in response to external messages
-	go t.manage(ctx, data.Window, data.Tray, data.Completion, stopped)
+	// Prepare input channels
+	states := make(chan State, 128)
+	notices := make(chan Notice, 128)
+
+	// Start a manager that updates the tray in response to input
+	go t.manage(ctx, data.Window, data.Tray, data.Completion, stopped, states, notices)
 
 	t.stop = stop
 	t.stopped = stopped
+	t.states = states
+	t.notices = notices
 
 	return nil
 }
 
 // Stop instructs the tray to cease operation and waits for it to close.
+//
+// The tray will stop automatically if its state channel is closed.
 func (t *Tray) Stop() error {
 	t.mutex.RLock()
 	stop, stopped := t.stop, t.stopped
@@ -86,15 +94,34 @@ func (t *Tray) Stop() error {
 
 	stop()
 
-	fmt.Printf("waiting for close\n")
+	//fmt.Printf("waiting for close\n")
 	<-stopped
 
 	return nil
 }
 
-// Handle updates the tray state to reflect the given message.
-func (t *Tray) Handle(msg Message) {
-	t.msgs <- msg
+// Update updates the state of the tray.
+func (t *Tray) Update(state State) {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+	if t.states != nil {
+		select {
+		case t.states <- state:
+		default:
+		}
+	}
+}
+
+// Notify causes the tray to send a notification.
+func (t *Tray) Notify(notice Notice) {
+	t.mutex.RLock()
+	defer t.mutex.RUnlock()
+	if t.notices != nil {
+		select {
+		case t.notices <- notice:
+		default:
+		}
+	}
 }
 
 func (t *Tray) run(startup chan<- trayData) {
@@ -119,84 +146,70 @@ func (t *Tray) run(startup chan<- trayData) {
 	}
 	close(startup)
 
-	fmt.Printf("starting message pump\n")
 	result := mw.Run()
-	fmt.Printf("stopped message pump\n")
 
 	t.mutex.Lock()
 	t.stop = nil
 	t.stopped = nil
+	close(t.states)
+	t.states = nil
+	close(t.notices)
+	t.notices = nil
 	t.mutex.Unlock()
 
 	completion <- result
 }
 
-func (t *Tray) manage(ctx context.Context, window *walk.MainWindow, ni *walk.NotifyIcon, completion <-chan int, stopped chan<- struct{}) {
+func (t *Tray) manage(ctx context.Context, window *walk.MainWindow, ni *walk.NotifyIcon, completion <-chan int, stopped chan<- struct{}, states <-chan State, notices <-chan Notice) {
 	defer close(stopped)
 	for {
 		select {
 		case <-completion:
 			return
-		case msg := <-t.msgs:
-			switch msg.Type {
-			case TypePolicyChange:
-				var summary string
-				{
-					count := len(msg.PolicyChange.New)
-					switch count {
-					case 1:
-						summary = "Enforcing 1 policy"
-					default:
-						summary = fmt.Sprintf("Enforcing %d policies", count)
-					}
-				}
-				info := fmt.Sprintf("%s %s", t.name, t.version)
-				window.Synchronize(func() {
-					// Update tool tip
-					fmt.Println(summary)
-					ni.SetToolTip(summary)
+		case state := <-states:
+			summary := state.Summary()
+			info := fmt.Sprintf("%s %s", t.name, t.version)
+			window.Synchronize(func() {
+				// Update tool tip
+				//fmt.Println(summary)
+				ni.SetToolTip(summary)
 
-					// Update menu
-					actions := ni.ContextMenu().Actions()
-					actions.Clear()
-					{
-						action := walk.NewAction()
-						action.SetText(info)
-						action.SetEnabled(false)
-						actions.Add(action)
+				// Update menu
+				actions := ni.ContextMenu().Actions()
+				actions.Clear()
+				{
+					action := walk.NewAction()
+					action.SetText(info)
+					action.SetEnabled(false)
+					actions.Add(action)
+				}
+				actions.Add(walk.NewSeparatorAction())
+				for _, pol := range state.Policies {
+					action := walk.NewAction()
+					desc := pol.Resource
+					if name := pol.Properties["resource.name"]; name != "" {
+						desc = name
 					}
-					actions.Add(walk.NewSeparatorAction())
-					for _, pol := range msg.PolicyChange.New {
-						action := walk.NewAction()
-						desc := pol.Resource
-						if name := pol.Properties["resource.name"]; name != "" {
-							desc = name
-						}
-						if pol.Limit != policy.DefaultLimit {
-							desc = fmt.Sprintf("%s: %d", desc, pol.Limit)
-						}
-						action.SetText(desc)
-						actions.Add(action)
+					if pol.Limit != policy.DefaultLimit {
+						desc = fmt.Sprintf("%s: %d", desc, pol.Limit)
 					}
-				})
-			case TypeLicenseLost:
-			case TypeProcessTermination:
-				title := "No licenses available"
-				message := fmt.Sprintf("The %s process has been terminated because no licenses are available.", msg.ProcTerm.Name)
-				window.Synchronize(func() {
-					ni.ShowCustom(
-						title,
-						message,
-						t.icon,
-					)
-				})
-			}
+					action.SetText(desc)
+					actions.Add(action)
+				}
+			})
+		case notice := <-notices:
+			window.Synchronize(func() {
+				ni.ShowCustom(
+					notice.Title,
+					notice.Message,
+					t.icon,
+				)
+			})
 		case <-ctx.Done():
 			// Here we use the synchronize function to ensure that our call to Close
 			// pushes the WM_CLOSE message onto the message queue of the correct
 			// thread. If we call Close() directly it could fail silently and
 			// deadlock.
-			fmt.Printf("calling close on mainwindow\n")
 			window.Synchronize(func() {
 				window.Close()
 			})

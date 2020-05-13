@@ -10,6 +10,7 @@ import (
 	"github.com/gentlemanautomaton/winsession"
 	"github.com/gentlemanautomaton/winsession/connstate"
 	"github.com/scjalliance/resourceful/enforcerui"
+	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/policy"
 )
 
@@ -31,6 +32,7 @@ type SessionManager struct {
 	managed   map[SessionID]*Session
 	attempted map[SessionID]sessionAttempt
 	pols      policy.Set
+	leases    lease.Set
 }
 
 // NewSessionManager returns a new session manager that is ready for use.
@@ -116,6 +118,7 @@ func (m *SessionManager) Scan() error {
 
 			m.mutex.Lock()
 			pols := m.pols
+			leases := m.leases
 			if err != nil {
 				if m.managed[id] == session {
 					delete(m.managed, id)
@@ -132,6 +135,9 @@ func (m *SessionManager) Scan() error {
 
 			// Send the current policy set to the session
 			session.SendPolicies(pols)
+
+			// Send the current lease set to the session
+			session.SendLeases(leases)
 		}()
 	}
 
@@ -148,6 +154,19 @@ func (m *SessionManager) UpdatePolicies(pols policy.Set) {
 
 	for _, session := range m.managed {
 		session.SendPolicies(pols)
+	}
+}
+
+// UpdateLeases sends the lease set to the ui process running in each
+// session.
+func (m *SessionManager) UpdateLeases(leases lease.Set) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	m.leases = leases
+
+	for _, session := range m.managed {
+		session.SendLeases(leases)
 	}
 }
 

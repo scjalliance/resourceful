@@ -3,53 +3,52 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
-	"fmt"
+	"io"
 	"os"
-	"sync"
 
 	"github.com/lxn/walk"
 	"github.com/scjalliance/resourceful/enforcerui"
 )
 
-func ui(ctx context.Context) {
-	ctx, shutdown := context.WithCancel(ctx)
-
-	fmt.Printf("Starting user interface\n")
+func ui(ctx context.Context) (exit int) {
+	// Prepare the icon used by the user interface
 	icon, err := walk.NewIconFromResourceId(IconResourceID)
 	if err != nil {
-		fmt.Printf("Failed to load icon from resource: %v\n", err)
-		os.Exit(1)
+		exit = 1
+		return
 	}
 	defer icon.Dispose()
 
-	ui := enforcerui.New(icon, ProgramName, Version)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer shutdown()
-		defer os.Stdin.Close()
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			var msg enforcerui.Message
-			if err := json.Unmarshal([]byte(scanner.Text()), &msg); err != nil {
-				fmt.Printf("Failed to unmarshal message\n")
-			}
-			ui.Handle(msg)
-		}
-		fmt.Printf("Scanner stopped")
-	}()
-
-	if err := ui.Run(ctx); err != nil {
-		fmt.Printf("UI: %v\n", err)
+	// Create the user interface and close it when we're done
+	ui, err := enforcerui.New(icon, ProgramName, Version)
+	if err != nil {
+		exit = 2
 		return
 	}
+	defer ui.Close()
 
-	wg.Wait()
+	// Close stdin when we receive a shutdown signal so that we interrupt the
+	// reader loop
+	ctx, shutdown := context.WithCancel(ctx)
+	defer shutdown()
+	go func() {
+		<-ctx.Done()
+		os.Stdin.Close()
+	}()
 
-	fmt.Printf("Stopped user interface\n")
+	r := enforcerui.NewReader(os.Stdin)
+	//w := enforcerui.NewWriter(os.Stdout)
+
+	for {
+		msg, err := r.Read()
+		if err != nil {
+			//fmt.Printf("enforcer ui read: %v\n", err)
+			if err != io.EOF {
+				exit = 3
+			}
+			return
+		}
+		ui.Handle(msg)
+	}
 }
