@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AndrewBurian/eventsource"
+	"github.com/golang/gddo/httputil"
 	"github.com/scjalliance/resourceful/guardian/transport"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/lease/leaseutil"
@@ -24,12 +26,14 @@ type ServerConfig struct {
 	LeaseProvider   lease.Provider
 	ShutdownTimeout time.Duration // Time allowed to the HTTP server to perform a graceful shutdown
 	Logger          *log.Logger
+	Handler         http.Handler // Optional HTTP handler served on "/"
 }
 
 // Server is a resourceful guardian HTTP server that coordinates locks on
 // finite resources.
 type Server struct {
 	ServerConfig
+	Stream *eventsource.Stream
 }
 
 // NewServer creates a new resourceful guardian server that will handle HTTP
@@ -37,6 +41,7 @@ type Server struct {
 func NewServer(cfg ServerConfig) *Server {
 	return &Server{
 		ServerConfig: cfg,
+		Stream:       eventsource.NewStream(),
 	}
 }
 
@@ -53,6 +58,7 @@ func Run(ctx context.Context, cfg ServerConfig) (err error) {
 func (s *Server) Run(ctx context.Context) (err error) {
 	s.Purge()
 	defer s.Purge()
+
 	printf(s.Logger, "Starting HTTP listener on %s", s.ListenSpec)
 
 	listener, err := net.Listen("tcp", s.ListenSpec)
@@ -67,6 +73,10 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	mux.Handle("/leases", http.HandlerFunc(s.leasesHandler))
 	mux.Handle("/acquire", http.HandlerFunc(s.acquireHandler))
 	mux.Handle("/release", http.HandlerFunc(s.releaseHandler))
+	mux.Handle("/stream", http.HandlerFunc(s.streamHandler))
+	if s.Handler != nil {
+		mux.Handle("/", s.Handler)
+	}
 
 	srv := &http.Server{
 		ReadTimeout:    60 * time.Second,
@@ -92,6 +102,7 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	printf(s.Logger, "Stopping HTTP listener on %s due to shutdown signal", s.ListenSpec)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.ShutdownTimeout)
 	defer cancel()
+	s.Stream.Shutdown()
 	srv.Shutdown(shutdownCtx)
 
 	err = <-result
@@ -123,18 +134,34 @@ func (s *Server) policiesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := transport.PoliciesResponse{
-		Policies: policies,
-	}
-	data, err := json.MarshalIndent(response, "", "\t")
-	if err != nil {
-		http.Error(w, "Unable to marshal policies", http.StatusInternalServerError)
-		return
-	}
+	//offers := []string{"text/plain", "application/json", "text/event-stream"}
+	offers := []string{"text/plain", "application/json"}
+	defaultOffer := "text/plain"
+	accepted := httputil.NegotiateContentType(r, offers, defaultOffer)
 
-	w.Header().Set("Content-Type", "application/json")
-
-	fmt.Fprintf(w, string(data))
+	switch accepted {
+	case "text/plain":
+		w.Header().Set("Content-Type", "text/plain")
+		for _, pol := range policies {
+			fmt.Fprintf(w, "%s\n", pol.String())
+		}
+	case "application/json":
+		response := transport.PoliciesResponse{
+			Policies: policies,
+		}
+		data, err := json.MarshalIndent(response, "", "\t")
+		if err != nil {
+			http.Error(w, "Unable to marshal policies", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, string(data))
+		/*
+			case "text/event-stream":
+				//s.Stream.TopicHandler()
+				w.Header().Set("Content-Type", "text/event-stream")
+		*/
+	}
 }
 
 // leasesHandler will return the set of leases for a particular resource.
@@ -379,6 +406,8 @@ func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies
 	summary := statsSummary(limit, leases.Stats(), strat)
 	printf(s.Logger, "%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
 
+	s.publishLeases(subject.Resource, leases, summary)
+
 	return
 }
 
@@ -475,7 +504,31 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 		printf(s.Logger, "%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
 	}
 
+	s.publishLeases(subject.Resource, leases, summary)
+
 	return nil
+}
+
+// streamHandler will attempt to send lease updates to the client via
+// server sent events.
+func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
+	s.Stream.ServeHTTP(w, r)
+	/*
+		if r.Header.Get("Accept") != "text/event-stream" {
+			http.Error(w, "This is an EventStream endpoint", http.StatusNotAcceptable)
+			return
+		}
+
+		c := eventsource.NewClient(w, r)
+		if c == nil {
+			http.Error(w, "EventStream not supported for this connection", http.StatusInternalServerError)
+			return
+		}
+
+		s.Stream.Register(c)
+		c.Wait()
+		s.Stream.Remove(c)
+	*/
 }
 
 // Purge instructs the server to conduct a full survey of all lease data
@@ -517,6 +570,23 @@ func (s *Server) Purge() error {
 		}
 	}
 	return nil
+}
+
+// publishLeases will attempt to publish an updated set of leases to stream
+// listeners.
+func (s *Server) publishLeases(resource string, leases lease.Set, summary string) {
+	// FIXME: Serialize publishing order?
+	go func() {
+		evt := eventsource.TypeEvent("leases")
+		enc := json.NewEncoder(evt)
+		if err := enc.Encode(transport.LeasesResponse{
+			Resources: []string{resource},
+			Leases:    leases,
+		}); err != nil {
+			printf(s.Logger, "stream: failed to publish lease update for \"%s\": %v\n", summary, err)
+		}
+		s.Stream.Broadcast(evt)
+	}()
 }
 
 func (s *Server) initRequest(r *http.Request) (req transport.Request, policies policy.Set, err error) {
