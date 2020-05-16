@@ -3,14 +3,35 @@
 package main
 
 import (
+	"log"
+	"net/http"
 	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/josephspurrier/goversioninfo"
+	"github.com/shurcooL/vfsgen"
 )
 
 func main() {
+	buildPublicFiles()
+	buildVersionInfo()
+}
+
+func buildPublicFiles() {
+	err := vfsgen.Generate(http.Dir("www"), vfsgen.Options{
+		Filename:        "www.gen.go",
+		PackageName:     "main",
+		VariableName:    "webfiles",
+		VariableComment: "webfiles is a directory of public files to be served over HTTP.",
+	})
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func buildVersionInfo() {
+
 	major, minor, patch, build := splitVersion(Version)
 	fileVersion := goversioninfo.FileVersion{
 		Major: major,

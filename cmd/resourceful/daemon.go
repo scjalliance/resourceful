@@ -138,6 +138,7 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 		LeaseProvider:   leaseProvider,
 		ShutdownTimeout: 5 * time.Second,
 		Logger:          logger,
+		Handler:         http.FileServer(webfiles),
 	}
 
 	logger.Printf("Created providers (policy: %s, lease: %s)", policyProvider.ProviderName(), leaseProvider.ProviderName())

@@ -1,0 +1,57 @@
+html {
+	font-family: 'helvetica neue', helvetica, arial, sans-serif;
+}
+
+table {
+	table-layout: fixed;
+	border-collapse: collapse;
+	width: 100%;
+	min-width: 700px;
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+section {
+	margin: 40px;
+}
+
+thead th:nth-child(1) {
+	width: 20%;
+	min-width: 200px;
+}
+
+thead th:nth-child(2) {
+	width: 20%;
+}
+
+thead th:nth-child(3) {
+	width: 20%;
+}
+
+thead th:nth-child(4) {
+	width: 20%;
+}
+
+tbody td:nth-child(4):first-letter {
+    text-transform:capitalize;
+}
+
+thead th:nth-child(5) {
+	width: 20%;
+}
+
+th, td {
+	padding: 20px;
+}
+
+th {
+	border-bottom: solid 3px black;
+}
+
+td {
+	border-right: solid 1px black;
+	border-bottom: solid 1px black;
+	border-left: solid 1px black;
+}
+
