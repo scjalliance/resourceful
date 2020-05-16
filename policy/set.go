@@ -173,6 +173,20 @@ func (s Set) Resource() (resource string) {
 	return ""
 }
 
+// Resources returns a slice of unique resources within the policy set.
+//
+// If the set is empty, the returned value will be nil.
+func (s Set) Resources() (resources []string) {
+	seen := make(map[string]bool)
+	for i := 0; i < len(s); i++ {
+		resource := s[i].Resource
+		if resource != "" && !seen[resource] {
+			resources = append(resources, resource)
+		}
+	}
+	return
+}
+
 // Properties returns the merged properties of all policies in the set.
 func (s Set) Properties() (props lease.Properties) {
 	var list []lease.Properties

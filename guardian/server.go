@@ -176,9 +176,8 @@ func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 
 	var resources []string
 	if req.Resource == "" {
-		resources, err = s.LeaseProvider.LeaseResources()
+		resources, err = s.collectResources()
 		if err != nil {
-			printf(s.Logger, "Resource retrieval failed: %v\n", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -186,35 +185,14 @@ func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 		resources = []string{req.Resource}
 	}
 
-	var leases lease.Set
-	for _, resource := range resources {
-		revision, resourceLeases, err := s.LeaseProvider.LeaseView(resource)
-		if err != nil {
-			printf(s.Logger, "Lease retrieval failed for \"%s\": %v\n", resource, err)
-			continue
-		}
-
-		// Purge expired leases
-		now := time.Now()
-		tx := lease.NewTx(resource, revision, resourceLeases)
-		leaseutil.Refresh(tx, now)
-
-		// Make a best effort to commit any changes
-		if !tx.Empty() {
-			s.LeaseProvider.LeaseCommit(tx)
-		}
-
-		txLeases := tx.Leases()
-		if len(leases) == 0 {
-			leases = txLeases
-		} else {
-			leases = append(leases, txLeases...)
-		}
+	snapshots, err := s.collectSnapshots(resources...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	response := transport.LeasesResponse{
-		Resources: resources,
-		Leases:    leases,
+		Snapshots: snapshots,
 	}
 	data, err := json.MarshalIndent(response, "", "\t")
 	if err != nil {
@@ -225,6 +203,90 @@ func (s *Server) leasesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	fmt.Fprintf(w, string(data))
+}
+
+// collectLeases returns a complete set of resources names from the providers.
+func (s *Server) collectResources() (resources []string, err error) {
+	policies, err := s.PolicyProvider.Policies()
+	if err != nil {
+		printf(s.Logger, "Policy retrieval failed: %v\n", err)
+		return nil, fmt.Errorf("policy retrieval failed: %v", err)
+	}
+
+	leaseResources, err := s.LeaseProvider.LeaseResources()
+	if err != nil {
+		printf(s.Logger, "Resource retrieval failed: %v\n", err)
+		return nil, fmt.Errorf("resource list retrieval failed: %v", err)
+	}
+
+	seen := make(map[string]bool)
+	for i := 0; i < len(policies); i++ {
+		resource := policies[i].Resource
+		if resource != "" && !seen[resource] {
+			resources = append(resources, resource)
+		}
+	}
+
+	for _, resource := range leaseResources {
+		if resource != "" && !seen[resource] {
+			resources = append(resources, resource)
+		}
+	}
+
+	return
+}
+
+// collectLeases collects all non-expired leases from the lease provider.
+// If one or more resources are provided only leases for those resources
+// are returned.
+func (s *Server) collectSnapshots(resources ...string) (snapshots []lease.Snapshot, err error) {
+	if len(resources) == 0 {
+		resources, err = s.collectResources()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for _, resource := range resources {
+		snapshot, err := s.collectSnapshot(resource)
+		if err != nil {
+			return nil, err
+		}
+
+		snapshots = append(snapshots, snapshot)
+	}
+
+	return snapshots, nil
+}
+
+// collectSnapshot collects a non-expired set of leases from the lease provider
+// for the given resource.
+func (s *Server) collectSnapshot(resource string) (snapshot lease.Snapshot, err error) {
+	// Collect relevant leases from the lease provider
+	revision, leases, err := s.LeaseProvider.LeaseView(resource)
+	if err != nil {
+		printf(s.Logger, "Lease retrieval failed for \"%s\": %v\n", resource, err)
+		return
+	}
+
+	// Purge expired leases
+	now := time.Now()
+	tx := lease.NewTx(resource, revision, leases)
+	leaseutil.Refresh(tx, now)
+
+	// Make a best effort to commit any changes
+	if !tx.Empty() {
+		s.LeaseProvider.LeaseCommit(tx)
+	}
+
+	snapshot.Leases = tx.Leases()
+
+	// Return the cleaned-up set of leases
+	return lease.Snapshot{
+		Resource: resource,
+		Revision: revision,
+		Leases:   tx.Leases(),
+	}, nil
 }
 
 // acquireHandler will attempt to acquire a lease for the specified resource.
@@ -268,7 +330,7 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 
 	printf(s.Logger, "%s: Lease acquisition requested\n", prefix)
 
-	ls, leases, err := s.acquire(req.Subject, props, policies)
+	ls, snapshot, err := s.acquire(req.Subject, props, policies)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -277,7 +339,7 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 	response := transport.AcquireResponse{
 		Request: req,
 		Lease:   ls,
-		Leases:  leases,
+		Leases:  snapshot.Leases,
 	}
 
 	data, err := json.Marshal(response)
@@ -293,7 +355,7 @@ func (s *Server) acquireHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // acquireHandler will attempt to acquire a lease for the specified resource.
-func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies policy.Set) (ls lease.Lease, leases lease.Set, err error) {
+func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies policy.Set) (ls lease.Lease, snapshot lease.Snapshot, err error) {
 	prefix := subject.String()
 
 	strat := policies.Strategy()
@@ -306,10 +368,12 @@ func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies
 
 	for attempt := 0; attempt < 5; attempt++ {
 		var revision uint64
+		var leases lease.Set
 
 		revision, leases, err = s.LeaseProvider.LeaseView(subject.Resource)
 		if err != nil {
 			printf(s.Logger, "%s: Lease retrieval failed: %v\n", prefix, err)
+			continue
 		}
 		now := time.Now()
 
@@ -384,6 +448,11 @@ func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies
 			}
 		}
 
+		// Retain the snapshot even if this ends up being an empty transaction
+		snapshot.Resource = tx.Resource()
+		snapshot.Revision = tx.Revision()
+		snapshot.Leases = tx.Leases()
+
 		// Don't bother committing empty transactions
 		if tx.Empty() {
 			break
@@ -392,7 +461,6 @@ func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies
 		// Attempt to commit the transaction
 		err = s.LeaseProvider.LeaseCommit(tx)
 		if err == nil {
-			leases = tx.Leases()
 			break
 		}
 
@@ -403,10 +471,10 @@ func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies
 		return
 	}
 
-	summary := statsSummary(limit, leases.Stats(), strat)
+	summary := statsSummary(limit, snapshot.Leases.Stats(), strat)
 	printf(s.Logger, "%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
 
-	s.publishLeases(subject.Resource, leases, summary)
+	s.publishLeaseUpdate(snapshot, summary)
 
 	return
 }
@@ -454,12 +522,13 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 	strat := policies.Strategy()
 	limit := policies.Limit()
 
-	var leases lease.Set
+	var snapshot lease.Snapshot
 	var ls lease.Lease
 	var found bool
 
 	for attempt := 0; attempt < 5; attempt++ {
 		var revision uint64
+		var leases lease.Set
 		revision, leases, err = s.LeaseProvider.LeaseView(subject.Resource)
 		if err != nil {
 			printf(s.Logger, "%s: Release failed: %v\n", prefix, err)
@@ -474,6 +543,11 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 		tx.Release(subject.Instance, now)
 		leaseutil.Refresh(tx, now) // Updates leases after release
 
+		// Retain the snapshot even if this ends up being an empty transaction
+		snapshot.Resource = tx.Resource()
+		snapshot.Revision = tx.Revision()
+		snapshot.Leases = tx.Leases()
+
 		// Don't bother committing empty transactions
 		if tx.Empty() {
 			break
@@ -482,7 +556,6 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 		// Attempt to commit the transaction
 		err = s.LeaseProvider.LeaseCommit(tx)
 		if err == nil {
-			leases = tx.Leases()
 			break
 		}
 
@@ -493,7 +566,7 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 		return err
 	}
 
-	summary := statsSummary(limit, leases.Stats(), strat)
+	summary := statsSummary(limit, snapshot.Leases.Stats(), strat)
 	if found {
 		if ls.Status == lease.Released {
 			printf(s.Logger, "%s: Release ignored because the lease had already been released (%s)\n", prefix, summary)
@@ -504,7 +577,7 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 		printf(s.Logger, "%s: Release ignored because the lease could not be found (%s)\n", prefix, summary)
 	}
 
-	s.publishLeases(subject.Resource, leases, summary)
+	s.publishLeaseUpdate(snapshot, summary)
 
 	return nil
 }
@@ -512,23 +585,36 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 // streamHandler will attempt to send lease updates to the client via
 // server sent events.
 func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
-	s.Stream.ServeHTTP(w, r)
-	/*
-		if r.Header.Get("Accept") != "text/event-stream" {
-			http.Error(w, "This is an EventStream endpoint", http.StatusNotAcceptable)
-			return
-		}
+	//s.Stream.ServeHTTP(w, r)
 
-		c := eventsource.NewClient(w, r)
-		if c == nil {
-			http.Error(w, "EventStream not supported for this connection", http.StatusInternalServerError)
-			return
-		}
+	if r.Header.Get("Accept") != "text/event-stream" {
+		http.Error(w, "This is an EventStream endpoint", http.StatusNotAcceptable)
+		return
+	}
 
-		s.Stream.Register(c)
-		c.Wait()
-		s.Stream.Remove(c)
-	*/
+	c := eventsource.NewClient(w, r)
+	if c == nil {
+		http.Error(w, "EventStream not supported for this connection", http.StatusInternalServerError)
+		return
+	}
+
+	s.Stream.Register(c)
+	s.Stream.Subscribe("leases", c)
+
+	snapshots, err := s.collectSnapshots()
+	if err == nil {
+		for _, snapshot := range snapshots {
+			evt, err := makeLeasesEvent(snapshot)
+			if err != nil {
+				printf(s.Logger, "stream: failed to send leases to client \"%s\": %v\n", r.Host, err)
+			} else {
+				c.Send(evt)
+			}
+		}
+	}
+
+	c.Wait()
+	s.Stream.Remove(c)
 }
 
 // Purge instructs the server to conduct a full survey of all lease data
@@ -572,17 +658,13 @@ func (s *Server) Purge() error {
 	return nil
 }
 
-// publishLeases will attempt to publish an updated set of leases to stream
-// listeners.
-func (s *Server) publishLeases(resource string, leases lease.Set, summary string) {
+// publishLeaseUpdate will attempt to publish an updated set of leases to
+// stream listeners.
+func (s *Server) publishLeaseUpdate(snapshot lease.Snapshot, summary string) {
 	// FIXME: Serialize publishing order?
 	go func() {
-		evt := eventsource.TypeEvent("leases")
-		enc := json.NewEncoder(evt)
-		if err := enc.Encode(transport.LeasesResponse{
-			Resources: []string{resource},
-			Leases:    leases,
-		}); err != nil {
+		evt, err := makeLeasesEvent(snapshot)
+		if err != nil {
 			printf(s.Logger, "stream: failed to publish lease update for \"%s\": %v\n", summary, err)
 		}
 		s.Stream.Broadcast(evt)
@@ -635,6 +717,16 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 		}
 	}
 	return
+}
+
+func makeLeasesEvent(snapshot lease.Snapshot) (*eventsource.Event, error) {
+	evt := eventsource.TypeEvent("leases")
+	enc := json.NewEncoder(evt)
+	err := enc.Encode(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return evt, nil
 }
 
 func statsSummary(limit uint, stats lease.Stats, strat strategy.Strategy) string {

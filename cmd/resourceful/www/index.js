@@ -100,6 +100,14 @@
 	{
 		const tbody = document.querySelector("section#leases table tbody");
 
+		const hasDecayed = function(lease) {
+			if (lease.decay == 0) {
+				return true
+			}
+			// FIXME: Calculate death of leases with decay
+			return false
+		}
+
 		const parseLease = function(lease) {
 			return {
 				"id": lease.instance.id,
@@ -108,7 +116,8 @@
 				"user": lease.properties["user.account"] || lease.properties["user.id"] || lease.instance.user,
 				"computer": lease.properties["host.name"] || lease.instance.host,
 				"status": lease.status,
-				"started": lease.properties["process.creation"] || lease.started
+				"started": lease.properties["process.creation"] || lease.started,
+				"dead": lease.status == "released" && hasDecayed(lease)
 			};
 		};
 
@@ -129,40 +138,38 @@
 			updateRow(element, lease.status, lease.program, lease.user, lease.computer, lease.status, lease.started);
 		};
 
-		const resourceMatch = function(element, ...resources) {
-			for (const resource of resources) {
-				if (element.dataset.resource == resource) {
-					return true;
-				}
-			}
-			return false;
-		};
-
-		const collectChildrenForResources = function(parent, ...resources) {
+		const collectChildrenForResource = function(parent, resource) {
 			let m = {};
 			for (const child of parent.children) {
-				if (child.id && resourceMatch(child, resources)) {
+				if (child.id && child.dataset.resource == resource) {
 					m[child.id] = true;
 				}
 			}
 			return m;
 		};
 
-		const updateLeaseTable = function(raw) {
-			const data = JSON.parse(raw);
-			console.log(data);
-
-			let existing = collectChildrenForResources(tbody, data.resources);
+		const updateLeaseTable = function(data) {
+			let existing = {};
 			let found = {};
 
-			for (const rawLease of data.leases) {
-				const lease = parseLease(rawLease);
-				found[lease.id] = true;
-				let row = document.getElementById(lease.id);
-				if (!row) {
-					addLease(tbody, lease);
-				} else {
-					updateLease(row, lease);
+			if (data.resource) {
+				existing = collectChildrenForResource(tbody, data.resource);
+			}
+
+			if (data.leases) {
+				for (const rawLease of data.leases) {
+					const lease = parseLease(rawLease);
+					if (lease.dead) {
+						console.log("dead lease detected: " + lease.id);
+						continue;
+					}
+					found[lease.id] = true;
+					let row = document.getElementById(lease.id);
+					if (!row) {
+						addLease(tbody, lease);
+					} else {
+						updateLease(row, lease);
+					}
 				}
 			}
 
@@ -178,8 +185,10 @@
 		//update(sample);
 
 		source.addEventListener("leases", function(e) {
+			const data = JSON.parse(e.data);
+			console.log(data);
 			//document.body.innerHTML += e.data + '<br>';
-			updateLeaseTable(e.data);
+			updateLeaseTable(data);
 			status.textContent = "";
 		}, false);
 	}
