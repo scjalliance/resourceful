@@ -259,13 +259,22 @@
 		}
 
 		// Listen for lease updates
-		source.addEventListener("leases", function(e) {
-			const data = JSON.parse(e.data);
-			console.log(data);
-			//document.body.innerHTML += e.data + '<br>';
-			updateLeaseTable(data);
-			status.textContent = "";
-		}, false);
+		{
+			let seen = {};
+			source.addEventListener("leases", function(e) {
+				const data = JSON.parse(e.data);
+				console.log(data);
+				status.textContent = "";
+				if (data.resource && data.revision) {
+					let last = seen[data.resource]
+					if (last && last > data.revision) {
+						return
+					}
+					seen[data.resource] = data.revision
+				}
+				updateLeaseTable(data);
+			}, false);
+		}
 
 		// Scan for dead rows every second
 		{
