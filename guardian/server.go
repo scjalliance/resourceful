@@ -79,8 +79,8 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	}
 
 	srv := &http.Server{
-		ReadTimeout:    60 * time.Second,
-		WriteTimeout:   60 * time.Second,
+		ReadTimeout: 30 * time.Second,
+		//WriteTimeout:   60 * time.Second,
 		MaxHeaderBytes: 1 << 16,
 		Handler:        mux,
 	}
