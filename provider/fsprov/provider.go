@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	"github.com/scjalliance/resourceful/policy"
@@ -43,15 +44,7 @@ func (p *Provider) Policies() (policies policy.Set, err error) {
 		return nil, fmt.Errorf("unable to access policy directory \"%s\": %v", p.path, dirErr)
 	}
 	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		matched, matchErr := filepath.Match("*.pol", file.Name())
-		if matchErr != nil {
-			return nil, fmt.Errorf("unable to perform policy filename match for file \"%s\": %v", file.Name(), matchErr)
-		}
-		if !matched {
+		if !isPolicyFile(file) {
 			continue
 		}
 
@@ -82,4 +75,73 @@ func (p *Provider) Policies() (policies policy.Set, err error) {
 	}
 
 	return
+}
+
+// SetPolicies will return update the set of policies within the policy
+// directory to match the given set. The policy files created will have
+// names matching the content hash of each policy. This function will
+// delete old *.pol files as necessary in order to match the new policy
+// set.
+func (p *Provider) SetPolicies(policies policy.Set) error {
+	// Serialize each of the policies with JSON encoding and place them
+	// into a map keyed by their content hash
+	newFiles := make(map[string][]byte)
+	for i, pol := range policies {
+		content, err := json.Marshal(&pol)
+		if err != nil {
+			return fmt.Errorf("failed to marshal json for policy %d: %v", i, err)
+		}
+		name := pol.Hash().String() + ".pol"
+		newFiles[name] = content
+	}
+
+	existingFiles := make(map[string]bool)
+	{
+		files, dirErr := ioutil.ReadDir(p.path)
+		if dirErr != nil {
+			return fmt.Errorf("unable to access policy directory \"%s\": %v", p.path, dirErr)
+		}
+		for _, file := range files {
+			if !isPolicyFile(file) {
+				continue
+			}
+			name := file.Name()
+			_, keep := newFiles[name]
+			existingFiles[name] = keep
+		}
+	}
+
+	for name, data := range newFiles {
+		path := filepath.Join(p.path, name)
+		err := ioutil.WriteFile(path, data, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to write policy file \"%s\": %v", name, err)
+		}
+	}
+
+	for name, keep := range existingFiles {
+		if keep {
+			continue
+		}
+		path := filepath.Join(p.path, name)
+		err := os.Remove(path)
+		if err != nil {
+			return fmt.Errorf("failed to delete policy file \"%s\": %v", name, err)
+		}
+	}
+
+	return nil
+}
+
+func isPolicyFile(file os.FileInfo) bool {
+	if file.IsDir() {
+		return false
+	}
+
+	matched, matchErr := filepath.Match("*.pol", file.Name())
+	if matchErr != nil {
+		panic(fmt.Errorf("unable to perform policy filename match for file \"%s\": %v", file.Name(), matchErr))
+	}
+
+	return matched
 }
