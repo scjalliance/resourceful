@@ -33,6 +33,13 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 		os.Exit(1)
 	}
 
+	// Determine the policy cache directory
+	cache, err := cacheDir()
+	if err != nil {
+		fmt.Printf("Failed to locate cache directory: %v\n", err)
+		os.Exit(1)
+	}
+
 	// TODO: Determine the version by using the PE package: https://golang.org/pkg/debug/pe/
 
 	// Determine the source directory
@@ -72,6 +79,12 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 	// Create the installation directory
 	if err = os.MkdirAll(dest, os.ModePerm); err != nil {
 		fmt.Printf("Failed to create installation directory \"%s\": %v\n", dest, err)
+		os.Exit(1)
+	}
+
+	// Create the policy cache directory
+	if err = os.MkdirAll(cache, os.ModePerm); err != nil {
+		fmt.Printf("Failed to create cache directory \"%s\": %v\n", cache, err)
 		os.Exit(1)
 	}
 
@@ -164,4 +177,14 @@ func installDir(version string) (dir string, err error) {
 	}
 
 	return filepath.Join(dir, "SCJ", "resourceful", version), nil
+}
+
+func cacheDir() (dir string, err error) {
+	dir = os.Getenv("PROGRAMDATA")
+	if dir == "" {
+		return "", errors.New("unable to determine ProgramData location")
+	}
+
+	return filepath.Join(dir, "SCJ", "resourceful", "policycache"), nil
+
 }

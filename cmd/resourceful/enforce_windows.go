@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/enforcer"
+	"github.com/scjalliance/resourceful/policy"
+	"github.com/scjalliance/resourceful/provider/fsprov"
 	"golang.org/x/sys/windows/svc/eventlog"
 )
 
@@ -62,7 +64,20 @@ func enforceInteractive(ctx context.Context, conf EnforceConfig) {
 		os.Exit(1)
 	}
 
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, nil, conf.Passive, logger)
+	polDir, err := cacheDir()
+	if err != nil {
+		fmt.Printf("Failed to locate cache directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	var cache policy.Cache
+	if polDir != "" {
+		prov := fsprov.New(polDir)
+		defer prov.Close()
+		cache = prov
+	}
+
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, cache, conf.Passive, logger)
 
 	service.Start()
 	<-ctx.Done()

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/scjalliance/resourceful/enforcer"
+	"github.com/scjalliance/resourceful/policy"
+	"github.com/scjalliance/resourceful/provider/fsprov"
 	"golang.org/x/sys/windows/svc"
 )
 
@@ -101,8 +103,22 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 	client := newClient(h.Conf.Server)
 	checkpoint = sendProgress(changes, checkpoint)
 
+	// Determine the policy cache directory
+	polDir, err := cacheDir()
+	if err != nil {
+		h.log("Failed to locate cache directory: %v\n", err)
+	}
+
+	// Prepare a filesystem policy provider that can act as a policy cache
+	var cache policy.Cache
+	if polDir != "" {
+		prov := fsprov.New(polDir)
+		defer prov.Close()
+		cache = prov
+	}
+
 	// Prepare the service
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, nil, h.Conf.Passive, h.Logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, cache, h.Conf.Passive, h.Logger)
 	checkpoint = sendProgress(changes, checkpoint)
 
 	// Start the service
