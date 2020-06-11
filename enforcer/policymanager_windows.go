@@ -63,6 +63,15 @@ func (m *PolicyManager) Load() {
 	m.policies = updated
 	m.polMutex.Unlock()
 
+	switch d := len(updated); d {
+	case 0:
+		m.log("POL: No policies found in the local policy cache")
+	case 1:
+		m.log("POL: Loading 1 policy from local policy cache")
+	default:
+		m.log("POL: Loading %d policies from local policy cache", d)
+	}
+
 	additions, deletions := previous.Diff(updated)
 
 	for _, pol := range additions {
