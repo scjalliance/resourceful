@@ -102,7 +102,7 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 	checkpoint = sendProgress(changes, checkpoint)
 
 	// Prepare the service
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, h.Conf.Passive, h.Logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, nil, h.Conf.Passive, h.Logger)
 	checkpoint = sendProgress(changes, checkpoint)
 
 	// Start the service

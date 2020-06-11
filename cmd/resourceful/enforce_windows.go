@@ -62,7 +62,7 @@ func enforceInteractive(ctx context.Context, conf EnforceConfig) {
 		os.Exit(1)
 	}
 
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, conf.Passive, logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, nil, conf.Passive, logger)
 
 	service.Start()
 	<-ctx.Done()

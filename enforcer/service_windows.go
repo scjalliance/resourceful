@@ -11,6 +11,7 @@ import (
 
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
+	"github.com/scjalliance/resourceful/policy"
 )
 
 // Service is a resourceful policy enforcement service. It watches the local
@@ -32,9 +33,9 @@ type Service struct {
 }
 
 // New returns a new policy enforcement service with the given client.
-func New(client *guardian.Client, enforcementInterval, policyInterval time.Duration, ui Command, environment lease.Properties, passive bool, logger Logger) *Service {
+func New(client *guardian.Client, enforcementInterval, policyInterval time.Duration, ui Command, environment lease.Properties, cache policy.Cache, passive bool, logger Logger) *Service {
 	var (
-		policies = NewPolicyManager(client, logger)
+		policies = NewPolicyManager(client, cache, logger)
 		sessions = NewSessionManager(ui, logger)
 		procs    = NewProcessManager(client, environment, passive, sessions, logger)
 	)
@@ -102,11 +103,14 @@ func (s *Service) run(shutdown <-chan struct{}, stopped chan<- struct{}) {
 
 	// Update policies on an interval
 	{
+		// Attempt to load policies from the policy cache
+		s.policies.Load()
+
+		// Try to pull current policies before we begin enforcement
+		_, started := s.policies.Update(ctx)
+
 		// Retry every 5 seconds if we failed
 		const startup = 5 * time.Second
-
-		// Try to pull policies before we begin enforcement
-		_, started := s.policies.Update(ctx)
 
 		go func() {
 			defer wg.Done()
