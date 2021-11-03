@@ -22,9 +22,9 @@ func enforceService(conf EnforceConfig, confErr error) {
 	}
 	defer elog.Close()
 
-	elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Starting %s service.", enforcer.ServiceName))
+	elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Starting %s service version %s.", enforcer.ServiceName, Version))
 	defer func() {
-		elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Stopped %s service.", enforcer.ServiceName))
+		elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Stopped %s service version %s.", enforcer.ServiceName, Version))
 	}()
 
 	logger := svcLogger{elog: elog}
