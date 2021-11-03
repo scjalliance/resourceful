@@ -118,6 +118,13 @@ func (m *PolicyManager) Update(ctx context.Context) (changed, ok bool) {
 		return false, true
 	}
 
+	switch d := len(updated); d {
+	case 1:
+		m.log("POL: Received 1 policy from policy server")
+	default:
+		m.log("POL: Received %d policies from policy server", d)
+	}
+
 	for _, pol := range additions {
 		m.log("POL: ADD %s: %s", pol.Hash().String(), pol.String())
 	}
