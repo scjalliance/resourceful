@@ -16,13 +16,13 @@ import (
 // PolicyManager maintains a copy of the current policy set.
 type PolicyManager struct {
 	client *guardian.Client
-	cache  policy.Cache
 	logger Logger
 
 	polMutex sync.RWMutex
 	policies policy.Set
 
 	cacheMutex sync.Mutex
+	cache      policy.Cache
 }
 
 // NewPolicyManager returns a new policy manager that will use the given
@@ -53,7 +53,9 @@ func (m *PolicyManager) Load() {
 		return
 	}
 
+	m.cacheMutex.Lock()
 	updated, err := m.cache.Policies()
+	m.cacheMutex.Unlock()
 	if err != nil {
 		m.log("Failed to load policies from cache: %v", err)
 		return
