@@ -8,6 +8,16 @@ type Set []Lease
 // TODO: Create a Resource() method that filters by resource, then remove
 //       the resource argument from HostUser and Instance.
 
+// Resource returns the set of leases matching the requested resource.
+func (s Set) Resource(resource string) (matched Set) {
+	for i := range s {
+		if s[i].MatchResource(resource) {
+			matched = append(matched, Clone(s[i]))
+		}
+	}
+	return
+}
+
 // HostUser returns the set of leases matching the requested resource, host
 // and user.
 func (s Set) HostUser(resource, host, user string) (matched Set) {

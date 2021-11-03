@@ -21,6 +21,11 @@ type Lease struct {
 	Refresh    Refresh           `json:"refresh,omitempty"`
 }
 
+// MatchResource returns true if the lease is for the given resource.
+func (ls *Lease) MatchResource(resource string) (matched bool) {
+	return ls.Resource == resource
+}
+
 // MatchHostUser returns true if the lease is for the given resource, host and user.
 func (ls *Lease) MatchHostUser(resource, host, user string) (matched bool) {
 	return ls.Resource == resource && ls.Instance.Host == host && ls.Instance.User == user
