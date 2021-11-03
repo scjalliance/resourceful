@@ -184,18 +184,26 @@ func (t *Tray) manage(ctx context.Context, window *walk.MainWindow, ni *walk.Not
 					action.SetEnabled(false)
 					actions.Add(action)
 				}
-				actions.Add(walk.NewSeparatorAction())
-				for _, pol := range state.Policies {
-					action := walk.NewAction()
-					desc := pol.Resource
-					if name := pol.Properties["resource.name"]; name != "" {
-						desc = name
+				if len(state.Policies) > 0 {
+					actions.Add(walk.NewSeparatorAction())
+					for _, pol := range state.Policies {
+						action := walk.NewAction()
+						desc := pol.Resource
+						if name := pol.Properties["resource.name"]; name != "" {
+							desc = name
+						}
+						if pol.Limit != policy.DefaultLimit {
+							desc = fmt.Sprintf("%s: %d", desc, pol.Limit)
+						}
+						action.SetText(desc)
+						actions.Add(action)
+						leases := state.Leases.Resource(pol.Resource)
+						for _, lease := range leases {
+							action := walk.NewAction()
+							action.SetText(fmt.Sprintf("  %s", lease.HostUser()))
+							actions.Add(action)
+						}
 					}
-					if pol.Limit != policy.DefaultLimit {
-						desc = fmt.Sprintf("%s: %d", desc, pol.Limit)
-					}
-					action.SetText(desc)
-					actions.Add(action)
 				}
 			})
 		case notice := <-notices:
