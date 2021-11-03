@@ -12,6 +12,7 @@ import (
 
 	"github.com/gentlemanautomaton/winservice"
 	"github.com/scjalliance/resourceful/enforcer"
+	"golang.org/x/sys/windows/svc/eventlog"
 )
 
 func uninstall(ctx context.Context) {
@@ -37,6 +38,14 @@ func uninstall(ctx context.Context) {
 		}
 	} else {
 		fmt.Printf("The \"%s\" service has been uninstalled.\n", enforcer.ServiceName)
+	}
+
+	// Remove the event log handler for the service
+	if err := eventlog.Remove(enforcer.ServiceName); err != nil {
+		// Report the error but press on regardless
+		fmt.Printf("Failed to remove event log source for %s: %v\n", enforcer.ServiceName, err)
+	} else {
+		fmt.Printf("The \"%s\" service event log handler has been uninstalled.\n", enforcer.ServiceName)
 	}
 
 	// Remove registry keys

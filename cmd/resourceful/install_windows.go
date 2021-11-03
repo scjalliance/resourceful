@@ -17,6 +17,7 @@ import (
 	"github.com/gentlemanautomaton/filework/fwos"
 	"github.com/gentlemanautomaton/winservice"
 	"github.com/scjalliance/resourceful/enforcer"
+	"golang.org/x/sys/windows/svc/eventlog"
 )
 
 func install(ctx context.Context, program string, conf EnforceConfig) {
@@ -158,6 +159,15 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 		os.Exit(1)
 	}
 	fmt.Printf("\"%s\" service installed successfully.\n", enforcer.ServiceName)
+
+	// Register the event log handler for the service
+	const eventTypes = eventlog.Error | eventlog.Warning | eventlog.Info
+	if err := eventlog.InstallAsEventCreate(enforcer.ServiceName, eventTypes); err != nil {
+		// Report the error but press on regardless
+		fmt.Printf("Failed to register event log source for %s: %v\n", enforcer.ServiceName, err)
+	} else {
+		fmt.Printf("\"%s\" service event log handler installed successfully.\n", enforcer.ServiceName)
+	}
 
 	// Start the service
 	fmt.Printf("Starting service.\n")
