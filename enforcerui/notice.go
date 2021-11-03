@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package enforcerui
 
 // Notice is a message sent to a session user via the action center.

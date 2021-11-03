@@ -1,5 +1,3 @@
-// +build windows
-
 package enforcer
 
 // A Logger is capable of logging events from an enforcement service.

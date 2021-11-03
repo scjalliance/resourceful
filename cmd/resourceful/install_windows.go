@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package main
@@ -186,5 +187,4 @@ func cacheDir() (dir string, err error) {
 	}
 
 	return filepath.Join(dir, "SCJ", "resourceful", "policycache"), nil
-
 }

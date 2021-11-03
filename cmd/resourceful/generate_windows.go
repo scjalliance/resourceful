@@ -1,4 +1,6 @@
+//go:build windows
 // +build windows
+
 // go build -ldflags -H=windowsgui
 
 package main
