@@ -5,7 +5,7 @@ package enforcer
 
 import "strings"
 
-var blacklist = map[string]bool{
+var blocklist = map[string]bool{
 	"applicationframehost":    true,
 	"backgroundtaskhost":      true,
 	"chrome":                  true,
@@ -49,9 +49,9 @@ var blacklist = map[string]bool{
 	"windowsinternal.composableshell.experiences.textinput.inputapp": true,
 }
 
-// Blacklisted returns true if p is a blacklisted process that must not
+// Blocklisted returns true if p is a blocklisted process that must not
 // be managed.
-func Blacklisted(p ProcessData) bool {
+func Blocklisted(p ProcessData) bool {
 	if p.Protected() {
 		return true
 	}
@@ -59,7 +59,7 @@ func Blacklisted(p ProcessData) bool {
 	name := strings.ToLower(p.Name)
 	name = strings.TrimSuffix(name, ".exe")
 
-	return blacklist[name]
+	return blocklist[name]
 
 	// TODO: Skip anything running as something other than the session's user
 

@@ -58,22 +58,22 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 		id := proc.UniqueID()
 		scanned[id] = struct{}{} // Record the ID in the map of scanned procs
 
-		// Don't manage blacklisted processes
-		if Blacklisted(proc) {
+		// Don't manage blocklisted processes
+		if Blocklisted(proc) {
 			if instance, exists := m.managed[id]; exists {
 				// Stop the invocation
 				if inv := m.invocations[instance]; inv != nil {
 					inv.Stop()
 					delete(m.invocations, instance)
-					m.log("Stopped management of blacklisted invocation %s (%s)", instance, proc.Name)
+					m.log("Stopped management of blocklisted invocation %s (%s)", instance, proc.Name)
 				}
 				// Remove from managed and add to skipped
 				delete(m.managed, id)
 				m.skipped[id] = struct{}{}
-				m.log("Stopped management of blacklisted process %s (%s)", id, proc.Name)
+				m.log("Stopped management of blocklisted process %s (%s)", id, proc.Name)
 			} else if _, exists := m.skipped[id]; !exists {
 				// Add to skipped
-				m.log("Skipped management of blacklisted process %s (%s)", id, proc.Name)
+				m.log("Skipped management of blocklisted process %s (%s)", id, proc.Name)
 				m.skipped[id] = struct{}{}
 			}
 			continue
