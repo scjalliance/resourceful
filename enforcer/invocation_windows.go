@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -17,6 +16,8 @@ import (
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
 	"github.com/scjalliance/resourceful/policy"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type absorptionRequest struct {
@@ -254,7 +255,7 @@ func (inv *Invocation) maintain(ctx context.Context, absorption <-chan absorptio
 				if termPending {
 					break // Already sent a termination command
 				}
-				uptime := time.Now().Sub(process.Data().Times.Creation)
+				uptime := time.Since(process.Data().Times.Creation)
 				if uptime < time.Second*5 {
 					// Insta-kill
 				} else {
@@ -335,12 +336,14 @@ func (inv *Invocation) recordState(state lease.State, now time.Time) {
 		return
 	}
 
+	tcase := cases.Title(language.AmericanEnglish)
+
 	remaining := state.Lease.ExpirationTime().Sub(now)
 	diff := state.Lease.Duration - remaining
 	if diff < time.Second {
-		inv.log("%s (%s, %s)", strings.Title(string(state.Lease.Status)), state.Lease.Resource, state.Lease.Duration)
+		inv.log("%s (%s, %s)", tcase.String(string(state.Lease.Status)), state.Lease.Resource, state.Lease.Duration)
 	} else {
-		inv.log("%s (%s, %s / %s)", strings.Title(string(state.Lease.Status)), state.Lease.Resource, remaining.Round(time.Second), state.Lease.Duration)
+		inv.log("%s (%s, %s / %s)", tcase.String(string(state.Lease.Status)), state.Lease.Resource, remaining.Round(time.Second), state.Lease.Duration)
 	}
 
 	/*

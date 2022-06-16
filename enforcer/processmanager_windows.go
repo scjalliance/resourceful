@@ -78,10 +78,8 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 			}
 			continue
 		} else {
-			if _, exists := m.skipped[id]; exists {
-				// Remove from skipped
-				delete(m.skipped, id)
-			}
+			// Remove from skipped if present
+			delete(m.skipped, id)
 		}
 
 		// Don't re-manage processes that are already managed
