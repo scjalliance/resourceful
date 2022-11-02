@@ -25,7 +25,7 @@ type absorptionRequest struct {
 	result  chan bool
 }
 
-// Invocation respresents the intent of a user to launch and operate a program
+// Invocation represents the intent of a user to launch and operate a program
 // that requires a lease according to the current policy set.
 type Invocation struct {
 	instance    lease.Instance
@@ -94,7 +94,7 @@ func (inv *Invocation) Absorb(process *Process) bool {
 	return <-req.result
 }
 
-// Stop causes mp to stop managing its process without killing it.
+// Stop causes inv to stop managing its process without killing it.
 func (inv *Invocation) Stop() {
 	inv.mutex.Lock()
 	defer inv.mutex.Unlock()
@@ -244,7 +244,6 @@ func (inv *Invocation) maintain(ctx context.Context, absorption <-chan absorptio
 				if state.Lease.Status != lease.Active || state.Lease.Expired(now) {
 					terminate = true
 				}
-
 			case state.LeaseNotRequired:
 				return false
 			case !state.Online:
