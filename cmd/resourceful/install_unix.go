@@ -5,11 +5,10 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"errors"
 )
 
-func install(ctx context.Context, program string, conf EnforceConfig) {
-	fmt.Printf("The resourceful program can only be installed on windows.\n")
-	os.Exit(1)
+// Run executes the install command.
+func (cmd *InstallCmd) Run(ctx context.Context) error {
+	return errors.New("the resourceful enforcement service can only be installed on windows")
 }

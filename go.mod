@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/AndrewBurian/eventsource v1.1.0
+	github.com/alecthomas/kong v0.7.0
 	github.com/boltdb/bolt v1.3.1
 	github.com/gentlemanautomaton/cmdline v0.0.0-20190611233644-681aa5e68f1c
 	github.com/gentlemanautomaton/filework v0.0.0-20211022185706-4a619ea5c114
@@ -21,13 +22,10 @@ require (
 	golang.org/x/crypto v0.1.0
 	golang.org/x/sys v0.1.0
 	golang.org/x/text v0.4.0
-	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
 
 require (
 	github.com/akavel/rsrc v0.10.2 // indirect
-	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
-	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749 // indirect
 	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect

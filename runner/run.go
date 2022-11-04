@@ -24,4 +24,21 @@ func Run(ctx context.Context, client *guardian.Client, config Config) (err error
 	}
 
 	return runner.Run(ctx)
+
+	/*
+		g, ctx := errgroup.WithContext(ctx)
+
+		run := func() error {
+			runner, err := New(client, config)
+			if err != nil {
+				return err
+			}
+			return runner.Run(ctx)
+		}
+
+		g.Go(run)
+		g.Go(run)
+
+		return g.Wait()
+	*/
 }

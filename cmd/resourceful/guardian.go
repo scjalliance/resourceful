@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gentlemanautomaton/signaler"
-
 	"github.com/boltdb/bolt"
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
@@ -21,82 +19,57 @@ import (
 	"github.com/scjalliance/resourceful/provider/fsprov"
 	"github.com/scjalliance/resourceful/provider/logprov"
 	"github.com/scjalliance/resourceful/provider/memprov"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-// GuardianCommand returns a guardian command and configuration for app.
-func GuardianCommand(app *kingpin.Application) (*kingpin.CmdClause, *GuardianConfig) {
-	cmd := app.Command("guardian", "Runs a guardian policy server.")
-	conf := &GuardianConfig{}
-	conf.Bind(cmd)
-	return cmd, conf
+// GuardianCmd runs a guardian policy server.
+type GuardianCmd struct {
+	LeaseStorage  string        `kong:"optional,name='leasestore',envar='LEASE_STORE',default='memory',help='Lease storage type.'"`
+	BoltPath      string        `kong:"optional,name='boltpath',envar='BOLT_PATH',default='resourceful.boltdb',help='Bolt database file path.'"`
+	PolicyPath    string        `kong:"optional,name='policypath',envar='POLICY_PATH',help='Policy directory path.'"`
+	TxPath        string        `kong:"optional,name='txlog',envar='TRANSACTION_LOG',default='resourceful.tx.log',help='Transaction log file path.'"`
+	Schedule      string        `kong:"optional,name='cpschedule',envar='CHECKPOINT_SCHEDULE',help='Transaction checkpoint schedule.'"`
+	StatHatKey    string        `kong:"optional,name='stathatkey',envar='STATHAT_KEY',help='Optional StatHat key for recording statistics.'"`
+	StatsInterval time.Duration `kong:"optional,name='stats',envar='STATS_INTERVAL',default='1m',help='Optional interval for recording statistics.'"`
 }
 
-// GuardianConfig holds configuration for the guardian command.
-type GuardianConfig struct {
-	LeaseStorage  string
-	BoltPath      string
-	PolicyPath    string
-	TxPath        string
-	Schedule      string
-	StatHatKey    string
-	StatsInterval time.Duration
-}
-
-// Bind binds the guardian configuration to the command.
-func (conf *GuardianConfig) Bind(cmd *kingpin.CmdClause) {
-	cmd.Flag("leasestore", "lease storage type").Envar("LEASE_STORE").Default(defaultLeaseStorage).EnumVar(&conf.LeaseStorage, "bolt", "memory")
-	cmd.Flag("boltpath", "bolt database file path").Envar("BOLT_PATH").Default(defaultBoltPath).StringVar(&conf.BoltPath)
-	cmd.Flag("policypath", "policy directory path").Envar("POLICY_PATH").StringVar(&conf.PolicyPath)
-	cmd.Flag("txlog", "transaction log file path").Envar("TRANSACTION_LOG").Default(defaultTransactionPath).StringVar(&conf.TxPath)
-	cmd.Flag("cpschedule", "transaction checkpoint schedule").Envar("CHECKPOINT_SCHEDULE").StringVar(&conf.Schedule)
-	cmd.Flag("stathatkey", "optional StatHat key for recording statistics").Envar("STATHAT_KEY").StringVar(&conf.StatHatKey)
-	cmd.Flag("stats", "optional interval for recording statistics").Envar("STATS_INTERVAL").Default(defaultStatsInterval).DurationVar(&conf.StatsInterval)
-}
-
-const (
-	defaultLeaseStorage    = "memory"
-	defaultBoltPath        = "resourceful.boltdb"
-	defaultTransactionPath = "resourceful.tx.log"
-	defaultStatsInterval   = "1m"
-)
-
-func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
+// Run executes the guardian command.
+func (cmd *GuardianCmd) Run(ctx context.Context) (err error) {
+	//func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 	prepareConsole(false)
 
 	// Prepare a logger that prints to stderr
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
 	// Announce termination
-	announcement := shutdown.Then(func() { logger.Println("Received termination signal") })
+	//announcement := shutdown.Then(func() { logger.Println("Received termination signal") })
 
 	// Cancel the context after the announcement
-	ctx := announcement.Context()
+	//ctx := announcement.Context()
 
 	const minStatsInterval = 5 * time.Second
-	if conf.StatsInterval < minStatsInterval {
+	if cmd.StatsInterval < minStatsInterval {
 		// Don't spam the stats recipient
-		conf.StatsInterval = minStatsInterval
+		cmd.StatsInterval = minStatsInterval
 	}
 
-	if conf.PolicyPath == "" {
+	if cmd.PolicyPath == "" {
 		// Use the working directory as the default source for policy files
-		conf.PolicyPath, err = os.Getwd()
+		cmd.PolicyPath, err = os.Getwd()
 		if err != nil {
 			logger.Printf("Unable to detect working directory: %v", err)
-			return
+			return nil
 		}
 	}
 
-	conf.PolicyPath, err = filepath.Abs(conf.PolicyPath)
+	cmd.PolicyPath, err = filepath.Abs(cmd.PolicyPath)
 	if err != nil {
-		logger.Printf("Invalid policy path directory \"%s\": %v", conf.PolicyPath, err)
-		return
+		logger.Printf("Invalid policy path directory \"%s\": %v", cmd.PolicyPath, err)
+		return nil
 	}
 
 	var checkpointSchedule []logprov.Schedule
-	if conf.Schedule != "" {
-		checkpointSchedule, err = logprov.ParseSchedule(conf.Schedule)
+	if cmd.Schedule != "" {
+		checkpointSchedule, err = logprov.ParseSchedule(cmd.Schedule)
 		if err != nil {
 			logger.Printf("Unable to parse transaction checkpoint schedule: %v", err)
 			return
@@ -106,7 +79,7 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 	logger.Println("Starting resourceful guardian daemon")
 	defer logger.Printf("Stopped resourceful guardian daemon")
 
-	txFile, err := createTransactionLog(conf.TxPath)
+	txFile, err := createTransactionLog(cmd.TxPath)
 	if err != nil {
 		logger.Printf("Unable to open transaction log: %v", err)
 		return
@@ -115,7 +88,7 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 		defer txFile.Close()
 	}
 
-	leaseProvider, err := createLeaseProvider(conf.LeaseStorage, conf.BoltPath)
+	leaseProvider, err := createLeaseProvider(cmd.LeaseStorage, cmd.BoltPath)
 	if err != nil {
 		logger.Printf("Unable to create lease provider: %v", err)
 		return
@@ -128,7 +101,7 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 
 	defer closeProvider(leaseProvider, "lease", logger)
 
-	policyProvider := cacheprov.New(fsprov.New(conf.PolicyPath))
+	policyProvider := cacheprov.New(fsprov.New(cmd.PolicyPath))
 
 	defer closeProvider(policyProvider, "policy", logger)
 
@@ -143,12 +116,12 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 
 	logger.Printf("Created providers (policy: %s, lease: %s)", policyProvider.ProviderName(), leaseProvider.ProviderName())
 
-	logger.Printf("Policy source directory: %s\n", conf.PolicyPath)
+	logger.Printf("Policy source directory: %s\n", cmd.PolicyPath)
 	// Verify that we're starting with a good policy set
 	policies, err := cfg.PolicyProvider.Policies()
 	if err != nil {
 		logger.Printf("Failed to load policy set: %v", err)
-		return
+		return nil
 	}
 
 	count := len(policies)
@@ -159,7 +132,7 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 		logger.Printf("%d policies loaded", count)
 	}
 
-	if recipient := createStatRecipient(conf); recipient != nil {
+	if recipient := createStatRecipient(cmd.StatHatKey); recipient != nil {
 		stats := NewStatManager(recipient)
 		if err := stats.Init(policyProvider, leaseProvider); err != nil {
 			logger.Printf("Failed to collect lease statistics: %v", err)
@@ -173,7 +146,7 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 		go func() {
 			defer wg.Done()
 
-			t := time.NewTicker(conf.StatsInterval)
+			t := time.NewTicker(cmd.StatsInterval)
 			defer t.Stop()
 
 			for {
@@ -205,9 +178,9 @@ func daemon(shutdown *signaler.Signaler, conf GuardianConfig) (err error) {
 	return
 }
 
-func createStatRecipient(conf GuardianConfig) StatRecipient {
-	if conf.StatHatKey != "" {
-		return NewStatHatRecipient("resourceful", conf.StatHatKey)
+func createStatRecipient(statHatKey string) StatRecipient {
+	if statHatKey != "" {
+		return NewStatHatRecipient("resourceful", statHatKey)
 	}
 	return nil
 }

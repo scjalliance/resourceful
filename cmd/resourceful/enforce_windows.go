@@ -9,43 +9,19 @@ import (
 	"os"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/scjalliance/resourceful/enforcer"
 	"github.com/scjalliance/resourceful/policy"
 	"github.com/scjalliance/resourceful/provider/fsprov"
 	"golang.org/x/sys/windows/svc/eventlog"
 )
 
-func enforceService(conf EnforceConfig, confErr error) {
-	elog, err := eventlog.Open(enforcer.ServiceName)
-	if err != nil {
-		return
-	}
-	defer elog.Close()
-
-	elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Starting %s service version %s.", enforcer.ServiceName, Version))
-	defer func() {
-		elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Stopped %s service version %s.", enforcer.ServiceName, Version))
-	}()
-
-	logger := svcLogger{elog: elog}
-
-	handler := Handler{
-		Name:    enforcer.ServiceName,
-		Conf:    conf,
-		ConfErr: confErr,
-		Logger:  logger,
-	}
-
-	if err := handler.Run(); err != nil {
-		elog.Error(enforcer.ServiceEventID, fmt.Sprintf("Error running service: %v", err))
-	}
-}
-
-func enforceInteractive(ctx context.Context, conf EnforceConfig) {
-	client := newClient(conf.Server)
+// Run executes the enforce command.
+func (cmd *EnforceCmd) Run(ctx context.Context) error {
+	client := newClient(cmd.Server)
 
 	logger := cliLogger{
-		Debug: conf.Debug,
+		Debug: cmd.Debug,
 	}
 	prepareConsole(false)
 
@@ -78,9 +54,41 @@ func enforceInteractive(ctx context.Context, conf EnforceConfig) {
 		cache = prov
 	}
 
-	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, cache, conf.Passive, logger)
+	service := enforcer.New(client, time.Second, time.Minute, uiCommand, environment, cache, cmd.Passive, logger)
 
 	service.Start()
 	<-ctx.Done()
 	service.Stop()
+
+	return nil
+}
+
+func runServiceHandler() {
+	var cmd EnforceCmd
+	parser := kong.Must(&cmd)
+	_, parseErr := parser.Parse(os.Args[1:])
+
+	elog, err := eventlog.Open(enforcer.ServiceName)
+	if err != nil {
+		return
+	}
+	defer elog.Close()
+
+	elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Starting %s service version %s.", enforcer.ServiceName, Version))
+	defer func() {
+		elog.Info(enforcer.ServiceEventID, fmt.Sprintf("Stopped %s service version %s.", enforcer.ServiceName, Version))
+	}()
+
+	logger := svcLogger{elog: elog}
+
+	handler := Handler{
+		Name:    enforcer.ServiceName,
+		Conf:    cmd.Config(),
+		ConfErr: parseErr,
+		Logger:  logger,
+	}
+
+	if err := handler.Run(); err != nil {
+		elog.Error(enforcer.ServiceEventID, fmt.Sprintf("Error running service: %v", err))
+	}
 }

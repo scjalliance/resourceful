@@ -5,11 +5,10 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
+	"errors"
 )
 
-func uninstall(ctx context.Context) {
-	fmt.Printf("The resourceful service can only be installed on windows.\n")
-	os.Exit(1)
+// Run executes the uninstall command.
+func (cmd *UninstallCmd) Run(ctx context.Context) error {
+	return errors.New("the resourceful enforcement service can only be installed on windows")
 }

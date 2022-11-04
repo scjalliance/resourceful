@@ -20,7 +20,10 @@ import (
 	"golang.org/x/sys/windows/svc/eventlog"
 )
 
-func install(ctx context.Context, program string, conf EnforceConfig) {
+// Run executes the install command.
+func (cmd *InstallCmd) Run(ctx context.Context) error {
+	program := os.Args[0]
+
 	// Determine the source path
 	sourcePath, err := filepath.Abs(program)
 	if err != nil {
@@ -146,11 +149,11 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 
 	// Determine the service arguments
 	args := []string{"enforce"}
-	if conf.Passive {
+	if cmd.Passive {
 		args = append(args, "-p")
 	}
-	if conf.Server != "" {
-		args = append(args, "-s", conf.Server)
+	if cmd.Server != "" {
+		args = append(args, "-s", cmd.Server)
 	}
 
 	// Install the service
@@ -179,6 +182,8 @@ func install(ctx context.Context, program string, conf EnforceConfig) {
 		}
 	}
 	fmt.Printf("Service started.\n")
+
+	return nil
 }
 
 func installDir(version string) (dir string, err error) {

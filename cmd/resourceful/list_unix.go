@@ -13,7 +13,8 @@ import (
 	"github.com/scjalliance/resourceful/lease"
 )
 
-func list(ctx context.Context, conf ListConfig) {
+// Run executes the list command.
+func (cmd *ListCmd) Run(ctx context.Context) error {
 	prepareConsole(false)
 
 	host, err := os.Hostname()
@@ -22,7 +23,7 @@ func list(ctx context.Context, conf ListConfig) {
 		os.Exit(1)
 	}
 
-	policies, err := collectPolicies(ctx, conf.Server)
+	policies, err := collectPolicies(ctx, cmd.Server)
 	if err != nil {
 		fmt.Printf("Failed to collect resourceful policies: %v\n", err)
 		os.Exit(1)
@@ -50,4 +51,6 @@ func list(ctx context.Context, conf ListConfig) {
 			fmt.Printf("  %s\n", p.Executable())
 		}
 	}
+
+	return nil
 }

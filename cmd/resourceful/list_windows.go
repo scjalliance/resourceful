@@ -7,14 +7,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/gentlemanautomaton/winproc"
 	"github.com/scjalliance/resourceful/enforcer"
 	"github.com/scjalliance/resourceful/lease"
 )
 
-func list(ctx context.Context, conf ListConfig) {
+// Run executes the list command.
+func (cmd *ListCmd) Run(ctx context.Context) error {
 	prepareConsole(false)
 
 	environment, err := buildEnvironment()
@@ -23,7 +22,7 @@ func list(ctx context.Context, conf ListConfig) {
 		os.Exit(1)
 	}
 
-	policies, err := collectPolicies(ctx, conf.Server)
+	policies, err := collectPolicies(ctx, cmd.Server)
 	if err != nil {
 		fmt.Printf("Failed to collect resourceful policies: %v\n", err)
 		os.Exit(1)
@@ -57,11 +56,15 @@ func list(ctx context.Context, conf ListConfig) {
 		}
 	}
 	//printChildren(0, tree)
+
+	return nil
 }
 
+/*
 func printChildren(depth int, nodes []winproc.Node) {
 	for _, node := range nodes {
 		fmt.Printf("%s%s\n", strings.Repeat("  ", depth), node.Process)
 		printChildren(depth+1, node.Children)
 	}
 }
+*/

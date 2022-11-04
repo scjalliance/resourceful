@@ -3,6 +3,6 @@
 
 package main
 
-func isInteractive() (bool, error) {
-	return true, nil
+func isWindowsService() (bool, error) {
+	return false, nil
 }

@@ -12,20 +12,19 @@ import (
 	"github.com/scjalliance/resourceful/enforcerui"
 )
 
-func ui(ctx context.Context) (exit int) {
+// Run executes the ui command.
+func (cmd *UICmd) Run(ctx context.Context) error {
 	// Prepare the icon used by the user interface
 	icon, err := walk.NewIconFromResourceId(IconResourceID)
 	if err != nil {
-		exit = 1
-		return
+		os.Exit(1)
 	}
 	defer icon.Dispose()
 
 	// Create the user interface and close it when we're done
 	ui, err := enforcerui.New(icon, ProgramName, Version)
 	if err != nil {
-		exit = 2
-		return
+		os.Exit(2)
 	}
 	defer ui.Close()
 
@@ -46,9 +45,9 @@ func ui(ctx context.Context) (exit int) {
 		if err != nil {
 			//fmt.Printf("enforcer ui read: %v\n", err)
 			if err != io.EOF {
-				exit = 3
+				os.Exit(3)
 			}
-			return
+			return nil
 		}
 		ui.Handle(msg)
 	}

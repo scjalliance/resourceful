@@ -5,10 +5,10 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
 
-func ui(ctx context.Context) (exit int) {
-	fmt.Printf("The resourceful ui can only be run on windows.\n")
-	return 1
+// Run executes the ui command.
+func (cmd *UICmd) Run(ctx context.Context) error {
+	return errors.New("the resourceful ui can only be run on windows")
 }

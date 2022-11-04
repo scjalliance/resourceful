@@ -15,7 +15,8 @@ import (
 	"golang.org/x/sys/windows/svc/eventlog"
 )
 
-func uninstall(ctx context.Context) {
+// Run executes the uninstall command.
+func (cmd *UninstallCmd) Run(ctx context.Context) error {
 	// Check for an existing enforcement service
 	exists, err := winservice.Exists(enforcer.ServiceName)
 	if err != nil {
@@ -24,7 +25,7 @@ func uninstall(ctx context.Context) {
 	}
 	if !exists {
 		fmt.Printf("An installation of the \"%s\" service could not be found.\n", enforcer.ServiceName)
-		return
+		return nil
 	}
 	fmt.Printf("An installation of the \"%s\" service was found.\n", enforcer.ServiceName)
 
@@ -53,6 +54,8 @@ func uninstall(ctx context.Context) {
 		fmt.Printf("Failed to remove uninstall entry from the Windows registry: %v\n", err)
 	}
 	fmt.Printf("Removed uninstall entry from from the Windows registry.\n")
+
+	return nil
 }
 
 // uninstallCommand returns a command line string can be run to uninstall

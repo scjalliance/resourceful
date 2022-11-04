@@ -7,6 +7,6 @@ import (
 	"golang.org/x/sys/windows/svc"
 )
 
-func isInteractive() (bool, error) {
-	return svc.IsAnInteractiveSession()
+func isWindowsService() (bool, error) {
+	return svc.IsWindowsService()
 }

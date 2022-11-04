@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/scjalliance/resourceful/enforcer"
 	"github.com/scjalliance/resourceful/policy"
 	"github.com/scjalliance/resourceful/provider/fsprov"
@@ -46,11 +47,11 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 	// Indicate to the system that we're starting up
 	checkpoint = sendProgress(changes, checkpoint)
 
-	h.log("OS Arguments: %#v", os.Args)
+	h.log("Program Arguments: %#v", os.Args)
 
 	// Check for errors in the arguments provided by the OS
 	if h.ConfErr != nil {
-		h.log("Invalid OS Arguments: %v", h.ConfErr)
+		h.log("Invalid Program Arguments: %v", h.ConfErr)
 		return false, 1
 	}
 
@@ -61,20 +62,22 @@ func (h Handler) Execute(args []string, requests <-chan svc.ChangeRequest, chang
 	if len(args) > 1 {
 		args = args[1:]
 		h.log("Service Arguments: %#v", args)
-		app := App()
-		enforceCmd, enforceConf := EnforceCommand(app)
-		command, err := app.Parse(args)
-		if err != nil {
+		var cmd ServiceCmd
+		parser := kong.Must(&cmd)
+		if _, err := parser.Parse(args); err != nil {
 			h.log("Invalid Service Arguments: %v", err)
 			return false, 1
-		} else if command != enforceCmd.FullCommand() {
-			h.log("Invalid Service Command: %s", command)
-			return false, 1
 		}
-		if enforceConf.Server != "" {
-			h.Conf.Server = enforceConf.Server
+		/*
+			} else if command != enforceCmd.FullCommand() {
+				h.log("Invalid Service Command: %s", command)
+				return false, 1
+			}
+		*/
+		if cmd.Server != "" {
+			h.Conf.Server = cmd.Server
 		}
-		if enforceConf.Passive {
+		if cmd.Passive {
 			h.Conf.Passive = true
 		}
 	}

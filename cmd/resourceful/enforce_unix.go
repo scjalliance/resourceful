@@ -5,16 +5,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 )
 
-func enforceService(conf EnforceConfig, confErr error) {
-	fmt.Printf("The resourceful policy enforcer can only be run on windows.\n")
-	os.Exit(1)
+// Run executes the enforce command.
+func (cmd *EnforceCmd) Run(ctx context.Context) error {
+	return errors.New("the resourceful policy enforcer can only be run on windows")
 }
 
-func enforceInteractive(ctx context.Context, conf EnforceConfig) {
+func runServiceHandler() {
 	fmt.Printf("The resourceful policy enforcer can only be run on windows.\n")
 	os.Exit(1)
 }

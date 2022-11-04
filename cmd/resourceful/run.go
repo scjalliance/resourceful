@@ -1,16 +1,6 @@
 package main
 
-import (
-	"context"
-	"errors"
-	"os"
-
-	"github.com/scjalliance/resourceful/guardian"
-	"github.com/scjalliance/resourceful/lease/leaseui"
-	"github.com/scjalliance/resourceful/runner"
-	"gopkg.in/alecthomas/kingpin.v2"
-)
-
+/*
 // RunCommand returns a run command and configuration for app.
 func RunCommand(app *kingpin.Application) (*kingpin.CmdClause, *RunConfig) {
 	cmd := app.Command("run", "Runs a program if a lease can be procured for it.")
@@ -66,3 +56,4 @@ func splitEndpointArgs(combined []string) (endpoints []guardian.Endpoint, args [
 	}
 	return
 }
+*/
