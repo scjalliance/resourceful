@@ -23,13 +23,13 @@ import (
 
 // GuardianCmd runs a guardian policy server.
 type GuardianCmd struct {
-	LeaseStorage  string        `kong:"optional,name='leasestore',envar='LEASE_STORE',default='memory',help='Lease storage type.'"`
-	BoltPath      string        `kong:"optional,name='boltpath',envar='BOLT_PATH',default='resourceful.boltdb',help='Bolt database file path.'"`
-	PolicyPath    string        `kong:"optional,name='policypath',envar='POLICY_PATH',help='Policy directory path.'"`
-	TxPath        string        `kong:"optional,name='txlog',envar='TRANSACTION_LOG',default='resourceful.tx.log',help='Transaction log file path.'"`
-	Schedule      string        `kong:"optional,name='cpschedule',envar='CHECKPOINT_SCHEDULE',help='Transaction checkpoint schedule.'"`
-	StatHatKey    string        `kong:"optional,name='stathatkey',envar='STATHAT_KEY',help='Optional StatHat key for recording statistics.'"`
-	StatsInterval time.Duration `kong:"optional,name='stats',envar='STATS_INTERVAL',default='1m',help='Optional interval for recording statistics.'"`
+	LeaseStorage  string        `kong:"optional,name='leasestore',env='LEASE_STORE',default='memory',help='Lease storage type.'"`
+	BoltPath      string        `kong:"optional,name='boltpath',env='BOLT_PATH',default='resourceful.boltdb',help='Bolt database file path.'"`
+	PolicyPath    string        `kong:"optional,name='policypath',env='POLICY_PATH',help='Policy directory path.'"`
+	TxPath        string        `kong:"optional,name='txlog',env='TRANSACTION_LOG',default='resourceful.tx.log',help='Transaction log file path.'"`
+	Schedule      string        `kong:"optional,name='cpschedule',env='CHECKPOINT_SCHEDULE',help='Transaction checkpoint schedule.'"`
+	StatHatKey    string        `kong:"optional,name='stathatkey',env='STATHAT_KEY',help='Optional StatHat key for recording statistics.'"`
+	StatsInterval time.Duration `kong:"optional,name='stats',env='STATS_INTERVAL',default='1m',help='Optional interval for recording statistics.'"`
 }
 
 // Run executes the guardian command.
