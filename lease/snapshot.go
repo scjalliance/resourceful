@@ -5,4 +5,5 @@ type Snapshot struct {
 	Resource string `json:"resource"`
 	Revision uint64 `json:"revision"`
 	Leases   Set    `json:"leases"`
+	Stats    Stats  `json:"stats"`
 }

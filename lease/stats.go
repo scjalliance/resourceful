@@ -5,8 +5,8 @@ import "github.com/scjalliance/resourceful/strategy"
 // Stats is a set of resource consumption statistics for each resource
 // counting strategy.
 type Stats struct {
-	Instance Tally // The number of leases with each lease status
-	Consumer Tally // The number of consumers with each lease status
+	Instance Tally `json:"instance"` // The number of leases with each lease status
+	Consumer Tally `json:"consumer"` // The number of consumers with each lease status
 }
 
 // Active returns the number of active resources according to the provided
@@ -87,11 +87,11 @@ func (s *Stats) Users(strat strategy.Strategy) map[string]uint {
 // Tally is a set of resource statistics for a particular resource counting
 // strategy.
 type Tally struct {
-	Active   uint
-	Released uint
-	Queued   uint
-	Consumed uint
-	Users    map[string]uint
+	Active   uint            `json:"active"`
+	Released uint            `json:"released"`
+	Queued   uint            `json:"queued"`
+	Consumed uint            `json:"consumed"`
+	Users    map[string]uint `json:"-"`
 }
 
 // Add will increase the tally for the specified status.

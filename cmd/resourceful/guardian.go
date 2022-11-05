@@ -109,6 +109,7 @@ func (cmd *GuardianCmd) Run(ctx context.Context) (err error) {
 		ListenSpec:      fmt.Sprintf(":%d", guardian.DefaultPort),
 		PolicyProvider:  policyProvider,
 		LeaseProvider:   leaseProvider,
+		RefreshInterval: 2 * time.Second,
 		ShutdownTimeout: 5 * time.Second,
 		Logger:          logger,
 		Handler:         http.FileServer(webfiles),

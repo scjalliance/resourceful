@@ -113,6 +113,26 @@
 		return duration / 1000000;
 	};
 
+	const calculateConsumed = function(strategy, stats) {
+		if (!stats) {
+			return 0;
+		}
+		switch (strategy) {
+			case "consumer":
+				if (!stats.consumer) {
+					return 0;
+				}
+				return stats.consumer.consumed;
+			case "instance":
+				if (!stats.instance) {
+					return 0;
+				}
+				return stats.instance.consumed;
+			default:
+				return 0;
+		}
+	}
+
 	const formatDuration = function(duration) {
 		const hours = Math.floor(duration / 3600000);
 		duration -= hours * 3600000;
@@ -145,6 +165,104 @@
 		source.addEventListener("error", function(e) {
 			status.textContent = "Connection Failure";
 		}, false);
+	}
+
+
+	// Policy management
+	{
+		const tbody = document.querySelector("section#policies table tbody");
+
+		const parsePolicy = function(policy) {
+			let program = "";
+			if (policy.properties) {
+				program = policy.properties["resource.name"] || policy.properties["program.name"] || policy.resource;
+			} else {
+				program = policy.resource;
+			}
+			return {
+				"id": "policy-" + policy.resource,
+				"resource": policy.resource,
+				"program": program,
+				"strategy": policy.strategy || "instance",
+				"limit": policy.limit
+			};
+		};
+
+		const addPolicy = function(parent, policy) {
+			let row = makeRow(
+				policy.id,
+				makeCell("program", policy.program),
+				makeCell("consumed", ""),
+				makeCell("available", ""),
+				makeCell("total", String(policy.limit))
+			);
+			row.dataset.resource = policy.resource;
+			row.dataset.program = policy.program;
+			row.dataset.strategy = policy.strategy;
+			row.dataset.limit = policy.limit;
+			parent.appendChild(row);
+		};
+
+		const updatePolicy = function(row, policy) {
+			row.dataset.program = policy.program;
+			row.dataset.strategy = policy.strategy;
+			row.dataset.limit = policy.limit;
+
+			if (row.dataset.stats) {
+				let consumed = calculateConsumed(policy.strategy, row.dataset.stats);
+				updateRow(row, policy.program, String(consumed), String(policy.limit - consumed), String(policy.limit));
+			} else {
+				updateRow(row, policy.program, "", "", String(policy.limit));
+			}
+		};
+
+		const collectChildren = function(parent) {
+			let m = {};
+			if (parent.children) {
+				for (const child of parent.children) {
+					if (child.id) {
+						m[child.id] = true;
+					}
+				}
+			}
+			return m;
+		};
+
+		const updatePolicyTable = function(data) {
+			let existing = collectChildren(tbody);
+			let found = {};
+
+			if (data.policies) {
+				for (const rawPolicy of data.policies) {
+					const policy = parsePolicy(rawPolicy);
+					found[policy.id] = true;
+					let row = document.getElementById(policy.id);
+					if (!row) {
+						addPolicy(tbody, policy);
+					} else {
+						updatePolicy(row, policy);
+					}
+				}
+			}
+
+			for (const id in existing) {
+				if (!found[id]) {
+					document.getElementById(id).remove();
+				}
+			}
+
+			status.textContent = "";
+		}
+
+		// Listen for policy updates
+		{
+			source.addEventListener("policies", function(e) {
+				const data = JSON.parse(e.data);
+				console.log(data);
+				status.textContent = "";
+				updatePolicyTable(data);
+			}, false);
+		}
 	}
 
 	// Lease management
@@ -258,6 +376,23 @@
 			status.textContent = "";
 		}
 
+		const updatePolicy = function(row, stats) {
+			row.dataset.stats = stats;
+			if (row.dataset.strategy) {
+				let consumed = calculateConsumed(row.dataset.strategy, stats);
+				updateRow(row, row.dataset.program, String(consumed), String(row.dataset.limit - consumed), String(row.dataset.limit));
+			}
+		};
+
+		const updatePolicyTable = function(data) {
+			if (data.resource && data.stats) {
+				let row = document.getElementById("policy-" + data.resource);
+				if (row) {
+					updatePolicy(row, data.stats);
+				}
+			}
+		}
+
 		// Listen for lease updates
 		{
 			let seen = {};
@@ -272,6 +407,7 @@
 					}
 					seen[data.resource] = data.revision
 				}
+				updatePolicyTable(data);
 				updateLeaseTable(data);
 			}, false);
 		}

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/AndrewBurian/eventsource"
@@ -24,6 +25,7 @@ type ServerConfig struct {
 	ListenSpec      string
 	PolicyProvider  policy.Provider
 	LeaseProvider   lease.Provider
+	RefreshInterval time.Duration // Time between lease refreshes sent to clients
 	ShutdownTimeout time.Duration // Time allowed to the HTTP server to perform a graceful shutdown
 	Logger          *log.Logger
 	Handler         http.Handler // Optional HTTP handler served on "/"
@@ -59,6 +61,9 @@ func (s *Server) Run(ctx context.Context) (err error) {
 	s.Purge()
 	defer s.Purge()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	printf(s.Logger, "Starting HTTP listener on %s", s.ListenSpec)
 
 	listener, err := net.Listen("tcp", s.ListenSpec)
@@ -92,16 +97,41 @@ func (s *Server) Run(ctx context.Context) (err error) {
 		close(result)
 	}()
 
+	var refreshDone chan struct{}
+	if s.RefreshInterval > 0 {
+		refreshDone = make(chan struct{})
+		go func() {
+			defer close(refreshDone)
+			t := time.NewTicker(s.RefreshInterval)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					s.refreshLeases()
+				}
+			}
+		}()
+	}
+
 	select {
 	case err = <-result:
 		printf(s.Logger, "Stopped HTTP listener on %s due to error: %v", s.ListenSpec, err)
+		cancel()
+		if refreshDone != nil {
+			<-refreshDone
+		}
 		return
 	case <-ctx.Done():
+		if refreshDone != nil {
+			<-refreshDone
+		}
 	}
 
 	printf(s.Logger, "Stopping HTTP listener on %s due to shutdown signal", s.ListenSpec)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.ShutdownTimeout)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.ShutdownTimeout)
+	defer shutdownCancel()
 	s.Stream.Shutdown()
 	srv.Shutdown(shutdownCtx)
 
@@ -279,13 +309,15 @@ func (s *Server) collectSnapshot(resource string) (snapshot lease.Snapshot, err 
 		s.LeaseProvider.LeaseCommit(tx)
 	}
 
-	snapshot.Leases = tx.Leases()
+	// Take the cleaned-up set of leases
+	leases = tx.Leases()
 
 	// Return the cleaned-up set of leases
 	return lease.Snapshot{
 		Resource: resource,
 		Revision: revision,
-		Leases:   tx.Leases(),
+		Leases:   leases,
+		Stats:    leases.Stats(),
 	}, nil
 }
 
@@ -452,6 +484,7 @@ func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies
 		snapshot.Resource = tx.Resource()
 		snapshot.Revision = tx.Revision()
 		snapshot.Leases = tx.Leases()
+		snapshot.Stats = snapshot.Leases.Stats()
 
 		// Don't bother committing empty transactions
 		if tx.Empty() {
@@ -471,7 +504,7 @@ func (s *Server) acquire(subject lease.Subject, props lease.Properties, policies
 		return
 	}
 
-	summary := statsSummary(limit, snapshot.Leases.Stats(), strat)
+	summary := statsSummary(limit, snapshot.Stats, strat)
 	printf(s.Logger, "%s: %s of %s lease succeeded (%s)\n", prefix, mode, ls.Status, summary)
 
 	s.publishLeaseUpdate(snapshot, summary)
@@ -547,6 +580,7 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 		snapshot.Resource = tx.Resource()
 		snapshot.Revision = tx.Revision()
 		snapshot.Leases = tx.Leases()
+		snapshot.Stats = snapshot.Leases.Stats()
 
 		// Don't bother committing empty transactions
 		if tx.Empty() {
@@ -566,7 +600,7 @@ func (s *Server) release(subject lease.Subject, policies policy.Set) (err error)
 		return err
 	}
 
-	summary := statsSummary(limit, snapshot.Leases.Stats(), strat)
+	summary := statsSummary(limit, snapshot.Stats, strat)
 	if found {
 		if ls.Status == lease.Released {
 			printf(s.Logger, "%s: Release ignored because the lease had already been released (%s)\n", prefix, summary)
@@ -600,6 +634,16 @@ func (s *Server) streamHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.Stream.Register(c)
 	s.Stream.Subscribe("leases", c)
+
+	policies, err := s.PolicyProvider.Policies()
+	if err == nil {
+		evt, err := makePoliciesEvent(policies)
+		if err != nil {
+			printf(s.Logger, "stream: failed to send policies to client \"%s\": %v\n", r.Host, err)
+		} else {
+			c.Send(evt)
+		}
+	}
 
 	snapshots, err := s.collectSnapshots()
 	if err == nil {
@@ -656,6 +700,49 @@ func (s *Server) Purge() error {
 		}
 	}
 	return nil
+}
+
+// refreshLeases resfreshes leases for all resources, and publishes
+// lease updates when changes to a lease set take place.
+func (s *Server) refreshLeases() {
+	resources, err := s.collectResources()
+	if err != nil {
+		return
+	}
+
+	for _, resource := range resources {
+		// Collect relevant leases from the lease provider
+		revision, leases, err := s.LeaseProvider.LeaseView(resource)
+		if err != nil {
+			continue
+		}
+
+		// Purge expired leases
+		now := time.Now()
+		tx := lease.NewTx(resource, revision, leases)
+		leaseutil.Refresh(tx, now)
+
+		// Move on to the next resource if there are no changes
+		if tx.Empty() {
+			continue
+		}
+
+		// Make a best effort to commit changes
+		s.LeaseProvider.LeaseCommit(tx)
+
+		// Publish the cleaned-up set of leases to all listeners
+		leases = tx.Leases()
+
+		snapshot := lease.Snapshot{
+			Resource: resource,
+			Revision: revision,
+			Leases:   leases,
+			Stats:    leases.Stats(),
+		}
+
+		s.publishLeaseUpdate(snapshot, resource)
+	}
+
 }
 
 // publishLeaseUpdate will attempt to publish an updated set of leases to
@@ -719,6 +806,21 @@ func parseRequest(r *http.Request) (req transport.Request, err error) {
 	return
 }
 
+func makePoliciesEvent(policies policy.Set) (*eventsource.Event, error) {
+	evt := eventsource.TypeEvent("policies")
+	enc := json.NewEncoder(evt)
+	data := struct {
+		Policies policy.Set `json:"policies"`
+	}{
+		Policies: policies,
+	}
+	err := enc.Encode(data)
+	if err != nil {
+		return nil, err
+	}
+	return evt, nil
+}
+
 func makeLeasesEvent(snapshot lease.Snapshot) (*eventsource.Event, error) {
 	evt := eventsource.TypeEvent("leases")
 	enc := json.NewEncoder(evt)
@@ -734,7 +836,13 @@ func statsSummary(limit uint, stats lease.Stats, strat strategy.Strategy) string
 	active := stats.Active(strat)
 	released := stats.Released(strat)
 	queued := stats.Queued(strat)
-	return fmt.Sprintf("alloc: %d/%d, active: %d, released: %d, queued: %d", consumed, limit, active, released, queued)
+	var limitStr string
+	if limit == policy.DefaultLimit {
+		limitStr = "∞"
+	} else {
+		limitStr = strconv.FormatUint(uint64(limit), 10)
+	}
+	return fmt.Sprintf("alloc: %d/%s, active: %d, released: %d, queued: %d", consumed, limitStr, active, released, queued)
 }
 
 func printf(logger *log.Logger, format string, v ...interface{}) {
