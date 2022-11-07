@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -105,6 +106,13 @@ func (cmd *GuardianCmd) Run(ctx context.Context) (err error) {
 
 	defer closeProvider(policyProvider, "policy", logger)
 
+	// The embeded file system contains all files in a www directory, which
+	// is an unnecessary detail we would like to hide form the world.
+	fsys, err := fs.Sub(webfiles, "www")
+	if err != nil {
+		return err
+	}
+
 	cfg := guardian.ServerConfig{
 		ListenSpec:      fmt.Sprintf(":%d", guardian.DefaultPort),
 		PolicyProvider:  policyProvider,
@@ -112,7 +120,7 @@ func (cmd *GuardianCmd) Run(ctx context.Context) (err error) {
 		RefreshInterval: 2 * time.Second,
 		ShutdownTimeout: 5 * time.Second,
 		Logger:          logger,
-		Handler:         http.FileServer(webfiles),
+		Handler:         http.FileServer(http.FS(fsys)),
 	}
 
 	logger.Printf("Created providers (policy: %s, lease: %s)", policyProvider.ProviderName(), leaseProvider.ProviderName())
