@@ -11,7 +11,7 @@ require (
 	github.com/gentlemanautomaton/serviceresolver v0.0.0-20170610230857-ab6252c30a66
 	github.com/gentlemanautomaton/signaler v0.0.0-20180126105343-ab8bba8a505a
 	github.com/gentlemanautomaton/stathat v0.0.0-20221118040915-c947911977e3
-	github.com/gentlemanautomaton/winproc v0.0.0-20190813233930-fc38503bf06c
+	github.com/gentlemanautomaton/winproc v0.0.0-20230429212231-99bc6c1427e7
 	github.com/gentlemanautomaton/winservice v0.0.0-20220909024252-b5af3981ff2a
 	github.com/gentlemanautomaton/winsession v0.0.0-20190913093530-51074a19fcd1
 	github.com/golang/gddo v0.0.0-20210115222349-20d68f94ee1f

@@ -26,8 +26,8 @@ github.com/gentlemanautomaton/signaler v0.0.0-20180126105343-ab8bba8a505a h1:I8B
 github.com/gentlemanautomaton/signaler v0.0.0-20180126105343-ab8bba8a505a/go.mod h1:YOqh9ieFYbwuLkFnzcbW3vAnmQF4WybHlGQYd+OlnsY=
 github.com/gentlemanautomaton/stathat v0.0.0-20221118040915-c947911977e3 h1:K3KXquIPV1kjsuajbxTorWYjgZzWBaa8URxT8j6CE98=
 github.com/gentlemanautomaton/stathat v0.0.0-20221118040915-c947911977e3/go.mod h1:S1TYpPqcJbyie2NcYF9N5UR4LOoZ/2lsqCCmRVfONYU=
-github.com/gentlemanautomaton/winproc v0.0.0-20190813233930-fc38503bf06c h1:rw76JpmWHGN5sCze60+kpqsBcXq0XjT6depLyuT14Ns=
-github.com/gentlemanautomaton/winproc v0.0.0-20190813233930-fc38503bf06c/go.mod h1:yApEZpMaSvT/msOjojs/94dZkDYja25TuNVaE4ZCtvQ=
+github.com/gentlemanautomaton/winproc v0.0.0-20230429212231-99bc6c1427e7 h1:RmkW3k5iqGlnpsl2feMkzElZdSexMp4AXnih6or+OYA=
+github.com/gentlemanautomaton/winproc v0.0.0-20230429212231-99bc6c1427e7/go.mod h1:tTtd6QhB4JXYB8Bh5sj9NqqmnH3jTO8VVHwKTAlPBAA=
 github.com/gentlemanautomaton/winservice v0.0.0-20220909024252-b5af3981ff2a h1:6WAQ3EY7cY7pLaSA6XF2qa4kCAl5iFDmPfH7TvZE83o=
 github.com/gentlemanautomaton/winservice v0.0.0-20220909024252-b5af3981ff2a/go.mod h1:IKrugiivkzjhdRqo9cyr6MufJhUMFce1k9o2qqzdtTc=
 github.com/gentlemanautomaton/winsession v0.0.0-20190913093530-51074a19fcd1 h1:1Y/usoQtoGCtLI13SOHx1s0WPn5RM15yBn6PauelW4A=
