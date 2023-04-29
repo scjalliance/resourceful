@@ -4,8 +4,6 @@
 package main
 
 import (
-	"log"
-	"net/http"
 	"runtime"
 	"strconv"
 	"strings"
