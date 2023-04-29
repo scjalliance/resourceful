@@ -1,16 +1,16 @@
 module github.com/scjalliance/resourceful
 
-go 1.19
+go 1.20
 
 require (
-	github.com/AndrewBurian/eventsource v1.1.0
-	github.com/alecthomas/kong v0.7.0
+	github.com/AndrewBurian/eventsource/v2 v2.1.1
+	github.com/alecthomas/kong v0.7.1
 	github.com/boltdb/bolt v1.3.1
 	github.com/gentlemanautomaton/cmdline v0.0.0-20190611233644-681aa5e68f1c
 	github.com/gentlemanautomaton/filework v0.0.0-20211022185706-4a619ea5c114
 	github.com/gentlemanautomaton/serviceresolver v0.0.0-20170610230857-ab6252c30a66
 	github.com/gentlemanautomaton/signaler v0.0.0-20180126105343-ab8bba8a505a
-	github.com/gentlemanautomaton/stathat v0.0.0-20191111215026-0700db86c7c1
+	github.com/gentlemanautomaton/stathat v0.0.0-20221118040915-c947911977e3
 	github.com/gentlemanautomaton/winproc v0.0.0-20190813233930-fc38503bf06c
 	github.com/gentlemanautomaton/winservice v0.0.0-20220909024252-b5af3981ff2a
 	github.com/gentlemanautomaton/winsession v0.0.0-20190913093530-51074a19fcd1
@@ -18,9 +18,9 @@ require (
 	github.com/josephspurrier/goversioninfo v1.4.0
 	github.com/lxn/walk v0.0.0-20210112085537-c389da54e794
 	github.com/mitchellh/go-ps v1.0.0
-	golang.org/x/crypto v0.1.0
-	golang.org/x/sys v0.1.0
-	golang.org/x/text v0.4.0
+	golang.org/x/crypto v0.8.0
+	golang.org/x/sys v0.7.0
+	golang.org/x/text v0.9.0
 )
 
 require (

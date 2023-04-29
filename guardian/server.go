@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/AndrewBurian/eventsource"
+	"github.com/AndrewBurian/eventsource/v2"
 	"github.com/golang/gddo/httputil"
 	"github.com/scjalliance/resourceful/guardian/transport"
 	"github.com/scjalliance/resourceful/lease"
