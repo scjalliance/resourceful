@@ -64,7 +64,9 @@ func (cmd *EnforceCmd) Run(ctx context.Context) error {
 }
 
 func runServiceHandler() {
-	var cmd EnforceCmd
+	var cmd struct {
+		Enforce EnforceCmd `kong:"cmd,help='Enforces resourceful policies on the local machine.'"`
+	}
 	parser := kong.Must(&cmd)
 	_, parseErr := parser.Parse(os.Args[1:])
 
@@ -83,7 +85,7 @@ func runServiceHandler() {
 
 	handler := Handler{
 		Name:    enforcer.ServiceName,
-		Conf:    cmd.Config(),
+		Conf:    cmd.Enforce.Config(),
 		ConfErr: parseErr,
 		Logger:  logger,
 	}
