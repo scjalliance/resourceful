@@ -197,8 +197,6 @@ func (inv *Invocation) manage(ctx context.Context, client *guardian.Client, envi
 }
 
 func (inv *Invocation) maintain(ctx context.Context, absorption <-chan absorptionRequest, states <-chan lease.State, process *Process) (ok bool) {
-	defer process.Close()
-
 	var termPending bool
 	for {
 		select {
@@ -208,10 +206,9 @@ func (inv *Invocation) maintain(ctx context.Context, absorption <-chan absorptio
 			// The process manager is telling us to stop managing the process.
 			// This could be because the process exited or because the
 			// process manager is shutting down.
-
-			// Ask the process for an exit code. If we get one, it suggests
-			// that the process exited on its own.
-			if code, err := process.ref.ExitCode(); err == nil {
+			if process.Running() {
+				inv.log("Ceasing management")
+			} else {
 				if termPending {
 					// Indicate to the main loop that we want to wait for a lease
 					//return true
@@ -219,9 +216,7 @@ func (inv *Invocation) maintain(ctx context.Context, absorption <-chan absorptio
 					// FIXME: TEMP: Don't respawn until the UI is better developed
 					return false
 				}
-				inv.log("Exited (code %d)", code)
-			} else {
-				inv.log("Ceasing management")
+				inv.log("Exited")
 			}
 			return false
 		case state, ok := <-states:

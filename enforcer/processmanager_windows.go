@@ -145,7 +145,7 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 	for _, proc := range pending {
 		id := proc.UniqueID()
 
-		// Open a reference to the process.
+		// Verify that we can get a reference to the process.
 		process, err := NewProcess(proc, m.passive, m.logger)
 		if err != nil {
 			// TODO: Retry on some interval with backoff so we don't spam the logs
