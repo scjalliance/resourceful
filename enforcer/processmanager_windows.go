@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/scjalliance/resourceful/guardian"
 	"github.com/scjalliance/resourceful/lease"
@@ -21,23 +22,25 @@ type ProcessManager struct {
 	sessions    *SessionManager
 	logger      Logger
 
-	mutex       sync.RWMutex
-	managed     map[UniqueID]lease.Instance
-	skipped     map[UniqueID]struct{}
-	invocations map[lease.Instance]*Invocation // Keyed by resource consumed
+	mutex        sync.RWMutex
+	managed      map[UniqueID]lease.Instance
+	skipped      map[UniqueID]struct{}
+	unmanageable map[UniqueID]time.Time
+	invocations  map[lease.Instance]*Invocation // Keyed by resource consumed
 }
 
 // NewProcessManager returns a new process manager that is ready for use.
 func NewProcessManager(client *guardian.Client, environment lease.Properties, passive bool, sessions *SessionManager, logger Logger) *ProcessManager {
 	return &ProcessManager{
-		client:      client,
-		environment: environment,
-		passive:     passive,
-		sessions:    sessions,
-		logger:      logger,
-		managed:     make(map[UniqueID]lease.Instance, 8),
-		skipped:     make(map[UniqueID]struct{}),
-		invocations: make(map[lease.Instance]*Invocation, 8),
+		client:       client,
+		environment:  environment,
+		passive:      passive,
+		sessions:     sessions,
+		logger:       logger,
+		managed:      make(map[UniqueID]lease.Instance, 8),
+		skipped:      make(map[UniqueID]struct{}),
+		unmanageable: make(map[UniqueID]time.Time),
+		invocations:  make(map[lease.Instance]*Invocation, 8),
 	}
 }
 
@@ -116,6 +119,12 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 		}
 	}
 
+	for id := range m.unmanageable {
+		if _, exists := scanned[id]; !exists {
+			delete(m.unmanageable, id)
+		}
+	}
+
 	// Bookkeeping for dead invocations
 	for instance, inv := range m.invocations {
 		if !inv.Done() {
@@ -145,13 +154,23 @@ func (m *ProcessManager) Enforce(policies policy.Set) error {
 	for _, proc := range pending {
 		id := proc.UniqueID()
 
+		// If we've previously tried to manage this process but failed, wait
+		// for one minute before trying again.
+		if when, failed := m.unmanageable[id]; failed && time.Since(when) < time.Minute {
+			continue
+		}
+
 		// Verify that we can get a reference to the process.
 		process, err := NewProcess(proc, m.passive, m.logger)
 		if err != nil {
 			// TODO: Retry on some interval with backoff so we don't spam the logs
 			m.log("Unable to manage process %s: %v", id, err)
+			m.unmanageable[id] = time.Now()
 			continue
 		}
+
+		// Remove any record of previous failures.
+		delete(m.unmanageable, id)
 
 		// Look for an existing invocation that can absorb the process
 
