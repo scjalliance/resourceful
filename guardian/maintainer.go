@@ -27,7 +27,7 @@ type LeaseMaintainer struct {
 	// maxRetries?
 
 	opMutex  sync.RWMutex
-	shutdown chan struct{}
+	shutdown chan bool // receives true to release before shutdown
 	stopped  chan struct{}
 
 	stateMutex sync.RWMutex
@@ -54,8 +54,8 @@ func NewLeaseMaintainer(client *Client, instance lease.Instance, props lease.Pro
 	}
 }
 
-// Start causes the maintainer to acquire and maintain a lease.
-func (lm *LeaseMaintainer) Start() error {
+// Acquire causes the maintainer to acquire and maintain a lease.
+func (lm *LeaseMaintainer) Acquire() error {
 	lm.opMutex.Lock()
 	defer lm.opMutex.Unlock()
 
@@ -63,7 +63,7 @@ func (lm *LeaseMaintainer) Start() error {
 		return ErrStarted
 	}
 
-	lm.shutdown = make(chan struct{})
+	lm.shutdown = make(chan bool)
 	lm.stopped = make(chan struct{})
 
 	go lm.run(lm.shutdown, lm.stopped)
@@ -71,26 +71,39 @@ func (lm *LeaseMaintainer) Start() error {
 	return nil
 }
 
-// Stop causes the maintainer to stop maintenance of its lease and to release
-// any lease that it might hold.
+// Release causes the maintainer to stop maintenance of any lease it might
+// hold and to release it.
+//
+// Release does not close the channels of any registered listeners. To close
+// all registered listeners call Close after calling Release.
+func (lm *LeaseMaintainer) Release() error {
+	lm.opMutex.Lock()
+	defer lm.opMutex.Unlock()
+
+	return lm.stop(true) // Release and then stop
+}
+
+// Stop causes the maintainer to stop maintenance of any lease it might hold
+// without releasing it.
 //
 // Stop does not close the channels of any registered listeners. To close
-// all registered listeners call Close instead.
+// all registered listeners call Close after calling Stop.
 func (lm *LeaseMaintainer) Stop() error {
 	lm.opMutex.Lock()
 	defer lm.opMutex.Unlock()
 
-	return lm.stop()
+	return lm.stop(false) // Stop without releasing
 }
 
 // stop tells the current run() goroutine to stop and then waits for it
 // to finish. The caller must hold a lock on the opMutex for the duration
 // of the call.
-func (lm *LeaseMaintainer) stop() error {
+func (lm *LeaseMaintainer) stop(release bool) error {
 	if lm.shutdown == nil {
 		return ErrClosed
 	}
 
+	lm.shutdown <- release
 	close(lm.shutdown)
 	<-lm.stopped // closed when lm.run exits
 
@@ -101,13 +114,13 @@ func (lm *LeaseMaintainer) stop() error {
 	return nil
 }
 
-// Close causes the maintainer to release any lease it might hold and close
-// all listener channels.
+// Close causes the maintainer to stop maintenance of any lease it might hold
+// and close all listener channels.
 func (lm *LeaseMaintainer) Close() error {
 	lm.opMutex.Lock()
 	defer lm.opMutex.Unlock()
 
-	lm.stop()
+	lm.stop(false)
 
 	lm.stateMutex.Lock()
 	defer lm.stateMutex.Unlock()
@@ -178,15 +191,26 @@ func (lm *LeaseMaintainer) Listen(bufferSize int) (ch <-chan lease.State) {
 	return listener
 }
 
-func (lm *LeaseMaintainer) run(shutdown <-chan struct{}, stopped chan struct{}) {
+func (lm *LeaseMaintainer) run(shutdown <-chan bool, stopped chan struct{}) {
 	defer close(stopped)
 
-	// Interrupt acquisitions when shutdown is called
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-shutdown
-		cancel()
-	}()
+	// Create a context from the shutdown channel so that we can interrupt
+	// acquisitions when shutdown is called. We carefully intercept and pass
+	// on the shutdown channel's value as we do so.
+	var ctx context.Context
+	{
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(context.Background())
+		upstream := shutdown
+		downstream := make(chan bool, 1)
+		shutdown = downstream
+		go func() {
+			defer close(downstream)
+			release := <-upstream
+			downstream <- release
+			cancel()
+		}()
+	}
 
 	// Give our operations 10 seconds to complete
 	const timeout = 10 * time.Second
@@ -194,16 +218,19 @@ func (lm *LeaseMaintainer) run(shutdown <-chan struct{}, stopped chan struct{}) 
 	timer := time.NewTimer(0)
 	for {
 		select {
-		case <-shutdown:
+		case release := <-shutdown:
 			if !timer.Stop() {
 				<-timer.C
 			}
 
-			// Shutdown has already been called, so it's important that we
-			// derive ctx from context.Background() here
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			lm.release(ctx)
-			cancel()
+			if release {
+				// Shutdown has already been called, so it's important that we
+				// derive ctx from context.Background() here to avoid
+				// premature cancellation.
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				lm.release(ctx)
+				cancel()
+			}
 
 			return
 		case <-timer.C:

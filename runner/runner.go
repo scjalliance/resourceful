@@ -100,10 +100,11 @@ func (r *Runner) run(ctx context.Context) (err error) {
 
 	go func() {
 		<-ctx.Done()
+		maintainer.Release()
 		maintainer.Close()
 	}()
 
-	if err := maintainer.Start(); err != nil {
+	if err := maintainer.Acquire(); err != nil {
 		return err
 	}
 

@@ -158,13 +158,36 @@ func (inv *Invocation) manage(ctx context.Context, client *guardian.Client, envi
 
 	defer close(stopped)
 
+	// Create a lease maintainer and ask it to acquire a lease
 	retry := time.Second * 5
 	maintainer := guardian.NewLeaseMaintainer(client, inv.instance, Properties(process.Data(), environment), retry)
-	maintainer.Start()
+	maintainer.Acquire()
 	states := maintainer.Listen(1)
 
+	// Stop the lease maintener when we exit, which could be almost immediate
+	// if we fail to acquire a lease.
 	defer func() {
-		go maintainer.Close()
+		//err := ctx.Err()
+		go func() {
+			defer maintainer.Close()
+
+			// If we've been asked to stop managing the invocation while the
+			// program is still running, it's because the enforcer is stopping
+			// and not because the program has exited.
+			//
+			// When this happens, stop the lease maintainer without releasing
+			// its leases back to the guardian.
+			/*
+				if (err == context.Canceled || err == context.DeadlineExceeded) && process.Running() {
+					maintainer.Stop()
+				} else {
+					maintainer.Release()
+				}
+			*/
+
+			maintainer.Release()
+		}()
+
 		for range states {
 			// Drain the states
 		}
