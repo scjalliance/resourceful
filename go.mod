@@ -9,7 +9,6 @@ require (
 	github.com/gentlemanautomaton/cmdline v0.0.0-20190611233644-681aa5e68f1c
 	github.com/gentlemanautomaton/filework v0.0.0-20211022185706-4a619ea5c114
 	github.com/gentlemanautomaton/serviceresolver v0.0.0-20170610230857-ab6252c30a66
-	github.com/gentlemanautomaton/signaler v0.0.0-20180126105343-ab8bba8a505a
 	github.com/gentlemanautomaton/stathat v0.0.0-20221118040915-c947911977e3
 	github.com/gentlemanautomaton/winproc v0.0.0-20230429212231-99bc6c1427e7
 	github.com/gentlemanautomaton/winservice v0.0.0-20220909024252-b5af3981ff2a
@@ -18,9 +17,9 @@ require (
 	github.com/josephspurrier/goversioninfo v1.4.0
 	github.com/lxn/walk v0.0.0-20210112085537-c389da54e794
 	github.com/mitchellh/go-ps v1.0.0
-	golang.org/x/crypto v0.9.0
-	golang.org/x/sys v0.8.0
-	golang.org/x/text v0.9.0
+	golang.org/x/crypto v0.17.0
+	golang.org/x/sys v0.15.0
+	golang.org/x/text v0.14.0
 )
 
 require (
