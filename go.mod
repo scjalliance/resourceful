@@ -1,10 +1,10 @@
 module github.com/scjalliance/resourceful
 
-go 1.20
+go 1.21
 
 require (
 	github.com/AndrewBurian/eventsource/v2 v2.1.1
-	github.com/alecthomas/kong v0.7.1
+	github.com/alecthomas/kong v0.8.1
 	github.com/boltdb/bolt v1.3.1
 	github.com/gentlemanautomaton/cmdline v0.0.0-20190611233644-681aa5e68f1c
 	github.com/gentlemanautomaton/filework v0.0.0-20211022185706-4a619ea5c114
