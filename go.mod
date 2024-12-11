@@ -17,9 +17,9 @@ require (
 	github.com/josephspurrier/goversioninfo v1.4.0
 	github.com/lxn/walk v0.0.0-20210112085537-c389da54e794
 	github.com/mitchellh/go-ps v1.0.0
-	golang.org/x/crypto v0.17.0
-	golang.org/x/sys v0.15.0
-	golang.org/x/text v0.14.0
+	golang.org/x/crypto v0.31.0
+	golang.org/x/sys v0.28.0
+	golang.org/x/text v0.21.0
 )
 
 require (
