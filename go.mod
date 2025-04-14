@@ -1,6 +1,7 @@
 module github.com/scjalliance/resourceful
 
 go 1.21
+toolchain go1.24.1
 
 require (
 	github.com/AndrewBurian/eventsource/v2 v2.1.1
@@ -17,9 +18,9 @@ require (
 	github.com/josephspurrier/goversioninfo v1.4.0
 	github.com/lxn/walk v0.0.0-20210112085537-c389da54e794
 	github.com/mitchellh/go-ps v1.0.0
-	golang.org/x/crypto v0.31.0
-	golang.org/x/sys v0.28.0
-	golang.org/x/text v0.21.0
+	golang.org/x/crypto v0.35.0
+	golang.org/x/sys v0.30.0
+	golang.org/x/text v0.22.0
 )
 
 require (
