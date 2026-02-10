@@ -1,10 +1,10 @@
 module github.com/scjalliance/resourceful
 
-go 1.24.1
+go 1.25.7
 
 require (
 	github.com/AndrewBurian/eventsource/v2 v2.1.1
-	github.com/alecthomas/kong v1.12.1
+	github.com/alecthomas/kong v1.14.0
 	github.com/boltdb/bolt v1.3.1
 	github.com/gentlemanautomaton/cmdline v0.0.0-20250112024754-4dfcc3d8ef7a
 	github.com/gentlemanautomaton/filework v0.0.0-20211022185706-4a619ea5c114
@@ -17,9 +17,9 @@ require (
 	github.com/josephspurrier/goversioninfo v1.5.0
 	github.com/lxn/walk v0.0.0-20210112085537-c389da54e794
 	github.com/mitchellh/go-ps v1.0.0
-	golang.org/x/crypto v0.42.0
-	golang.org/x/sys v0.36.0
-	golang.org/x/text v0.29.0
+	golang.org/x/crypto v0.48.0
+	golang.org/x/sys v0.41.0
+	golang.org/x/text v0.34.0
 )
 
 require (
